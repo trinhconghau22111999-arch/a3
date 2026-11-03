@@ -270,6 +270,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Độ trễ có thể vừa được chỉnh bằng nút âm lượng trong lúc phát video
+        delayMs = sp.getInt("audio_delay_ms", 150);
+        updateDelayUi();
         refresh();
     }
 

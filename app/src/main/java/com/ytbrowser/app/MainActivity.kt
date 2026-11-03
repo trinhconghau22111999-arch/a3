@@ -876,6 +876,43 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
+    // ---- Nút âm lượng khi ĐANG PHÁT video: không chỉnh âm lượng nữa mà chỉnh độ trễ âm thanh ----
+    // Vol+ = +10 ms, Vol- = -10 ms (cùng giá trị với thanh "ĐỘ TRỄ ÂM THANH" ở màn hình chính, lưu
+    // trong prefs "audio_delay_ms"). Áp dụng cho tiếng phát ra loa và giắc 3.5mm.
+    private val DELAY_STEP_MS = 10
+    private val DELAY_MAX_MS = 1000
+    private var delayToast: Toast? = null
+
+    private fun setMusicVolumeToMax() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.setStreamVolume(
+                android.media.AudioManager.STREAM_MUSIC,
+                am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC),
+                0
+            )
+        } catch (e: Exception) {
+            Log.w("YTBrowser", "Không đặt được âm lượng tối đa", e)
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val code = event.keyCode
+        if (isVideoPlaying && (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val step = if (code == KeyEvent.KEYCODE_VOLUME_UP) DELAY_STEP_MS else -DELAY_STEP_MS
+                val newMs = (audioDelayMs() + step).coerceIn(0, DELAY_MAX_MS)
+                prefs.edit().putInt("audio_delay_ms", newMs).apply()
+                applyAudioDelay()
+                delayToast?.cancel()
+                delayToast = Toast.makeText(this, "Độ trễ âm thanh: $newMs ms", Toast.LENGTH_SHORT)
+                delayToast?.show()
+            }
+            return true // nuốt phím, không cho hệ thống đổi âm lượng
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onDestroy() {
         // Nhả wake lock (nếu đang giữ) khi Activity bị đóng hẳn - tránh giữ CPU thức vô ích sau
         // khi app đã thoát, dù wake lock cũng tự hết hạn sau 60 giây nếu lỡ sót release().
@@ -1629,7 +1666,11 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun acquire() {
             runOnUiThread {
+                val wasPlaying = isVideoPlaying
                 isVideoPlaying = true
+                // Vừa bắt đầu phát video (không phải lần làm mới wake lock 30 giây/lần) -> mặc định
+                // mở âm lượng loa/giắc 3.5mm hết cỡ.
+                if (!wasPlaying) setMusicVolumeToMax()
                 if (wakeLock == null) {
                     val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
                     // PARTIAL_WAKE_LOCK: chỉ giữ CPU thức, KHÔNG bật/giữ sáng màn hình - đúng ý
