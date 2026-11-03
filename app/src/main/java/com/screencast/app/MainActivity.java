@@ -193,7 +193,7 @@ public class MainActivity extends Activity {
 
         // ---- Thẻ độ trễ âm thanh ----
         sp = getSharedPreferences("ytbrowser_prefs", MODE_PRIVATE);
-        delayMs = sp.getInt("audio_delay_ms", 150);
+        delayMs = sp.getInt("audio_delay_ms", 300);
 
         LinearLayout delayCard = new LinearLayout(this);
         delayCard.setOrientation(LinearLayout.VERTICAL);
@@ -271,7 +271,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         // Độ trễ có thể vừa được chỉnh bằng nút âm lượng trong lúc phát video
-        delayMs = sp.getInt("audio_delay_ms", 150);
+        delayMs = sp.getInt("audio_delay_ms", 300);
         updateDelayUi();
         refresh();
     }

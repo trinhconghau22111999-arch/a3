@@ -33,9 +33,9 @@ async function start() {
     const rest = caps.filter(c => c.mimeType !== 'video/H264');
     if (h264.length) tr.setCodecPreferences([...h264, ...rest]);
   } catch (e) {}
-  // Đệm nhỏ (~60 ms) để hình mượt, không giật. Muốn trễ thấp hơn thì giảm số này (0 = trễ tối thiểu nhưng dễ giật)
-  try { tr.receiver.playoutDelayHint = 0.06; } catch (e) {}
-  try { tr.receiver.jitterBufferTarget = 60; } catch (e) {}
+  // Đệm ~300 ms để hình mượt, không giật. Muốn trễ thấp hơn thì giảm số này (0 = trễ tối thiểu nhưng dễ giật)
+  try { tr.receiver.playoutDelayHint = 0.3; } catch (e) {}
+  try { tr.receiver.jitterBufferTarget = 300; } catch (e) {}
 
   p.ontrack = e => {
     v.srcObject = (e.streams && e.streams[0]) || new MediaStream([e.track]);
