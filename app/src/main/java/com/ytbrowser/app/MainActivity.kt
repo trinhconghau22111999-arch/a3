@@ -822,7 +822,7 @@ class MainActivity : AppCompatActivity() {
     // của hình khi chia sẻ màn hình lên TV. Giá trị (ms) do người dùng chỉnh ở màn hình chính
     // (lưu trong prefs "audio_delay_ms"). Cách làm: cho mọi thẻ video/audio đi qua DelayNode của
     // Web Audio API. Chỉ nối vào khi AudioContext đã chạy (running) để không bao giờ bị mất tiếng.
-    private fun audioDelayMs(): Int = prefs.getInt("audio_delay_ms", 300)
+    private fun audioDelayMs(): Int = prefs.getInt("audio_delay_ms", 390)
 
     private fun applyAudioDelay() {
         webView.evaluateJavascript(
