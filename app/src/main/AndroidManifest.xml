@@ -20,7 +20,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Chiếu màn hình"
+        android:label="Chiếu Tube for me"
         android:theme="@android:style/Theme.DeviceDefault.Light"
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
