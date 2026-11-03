@@ -23,7 +23,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Chiếu Tube for me"
-        android:theme="@android:style/Theme.DeviceDefault.Light"
+        android:theme="@android:style/Theme.DeviceDefault"
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
 
