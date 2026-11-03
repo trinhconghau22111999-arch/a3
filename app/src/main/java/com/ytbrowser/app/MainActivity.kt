@@ -163,7 +163,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         prefs = getSharedPreferences("ytbrowser_prefs", Context.MODE_PRIVATE)
-        landscapeLocked = prefs.getBoolean("landscape_lock", false)
+        // Đã bỏ nút khoá ngang: xoá trạng thái đã lưu để không bị kẹt ở chế độ ngang.
+        landscapeLocked = false
+        prefs.edit().remove("landscape_lock").apply()
 
         webView = findViewById(R.id.webview)
         progressBar = findViewById(R.id.progressBar)
@@ -516,10 +518,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 webView.visibility = View.GONE
 
-                // Thêm SAU CÙNG (khi fullscreenContainer đã có trong decor) để ô vuông "3x"
-                // nổi trên cùng, đè cố định lên vị trí nút Cài đặt của trình phát - xem
-                // addSpeedToggleButton() để biết lý do/cách chỉnh vị trí.
-                fullscreenContainer?.let { addSpeedToggleButton(it) }
+                // Đã bỏ 2 nút "xoay ngang" và "2x" trong chế độ toàn màn hình.
 
                 hideSystemUi()
                 // Mặc định xoay tự do cả dọc lẫn ngang; nếu người dùng đã bật nút "chỉ ngang"
