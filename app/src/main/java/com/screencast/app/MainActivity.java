@@ -5,7 +5,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -16,7 +15,6 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final int REQ_CAPTURE = 1;
     private static final int REQ_NOTIF = 2;
 
     private TextView info;
@@ -37,7 +35,7 @@ public class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("Chiếu màn hình lên TV");
+        title.setText("Chiếu Tube for me lên TV");
         title.setTextSize(24);
         title.setGravity(Gravity.CENTER);
 
@@ -54,8 +52,7 @@ public class MainActivity extends Activity {
 
         Button ytBtn = new Button(this);
         ytBtn.setText("Mở Tube for me");
-        ytBtn.setOnClickListener(v -> startActivity(
-                new Intent().setClassName(getPackageName(), "com.ytbrowser.app.MainActivity")));
+        ytBtn.setOnClickListener(v -> openTube());
 
         root.addView(title);
         root.addView(info);
@@ -129,13 +126,18 @@ public class MainActivity extends Activity {
             if (ip == null) {
                 info.setText("Đang chiếu, nhưng chưa thấy WiFi.\nHãy kết nối WiFi (cùng mạng với TV).");
             } else {
-                info.setText("Đang chiếu.\n\nTrên TV mở trình duyệt và gõ:\n\nhttp://" + ip + ":" + ScreenService.PORT);
+                info.setText("Đang chiếu.\n\nTrên TV mở trình duyệt và gõ:\n\nhttp://" + ip + ":" + ScreenService.PORT
+                        + "\n\nChỉ hình trong Tube for me được chiếu, app khác không bao giờ hiện lên TV.");
             }
             btn.setText("Dừng chiếu");
         } else {
-            info.setText("Điện thoại và TV phải dùng chung WiFi.\nBấm nút bên dưới để bắt đầu.");
+            info.setText("Điện thoại và TV phải dùng chung WiFi.\nBấm nút bên dưới để bắt đầu, app sẽ tự mở Tube for me.");
             btn.setText("Bắt đầu chiếu");
         }
+    }
+
+    private void openTube() {
+        startActivity(new Intent().setClassName(getPackageName(), "com.ytbrowser.app.MainActivity"));
     }
 
     private void startShare() {
@@ -143,32 +145,23 @@ public class MainActivity extends Activity {
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
         } else {
-            requestCapture();
+            launchShare();
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
-        if (code == REQ_NOTIF) requestCapture();
+        if (code == REQ_NOTIF) launchShare();
     }
 
-    private void requestCapture() {
-        MediaProjectionManager m = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-        startActivityForResult(m.createScreenCaptureIntent(), REQ_CAPTURE);
-    }
-
-    @Override
-    protected void onActivityResult(int req, int res, Intent data) {
-        super.onActivityResult(req, res, data);
-        if (req == REQ_CAPTURE && res == RESULT_OK && data != null) {
-            Intent i = new Intent(this, ScreenService.class);
-            i.putExtra("data", data);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
-            else startService(i);
-            ScreenService.running = true;
-            refresh();
-        }
+    private void launchShare() {
+        Intent i = new Intent(this, ScreenService.class);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
+        else startService(i);
+        ScreenService.running = true;
+        refresh();
+        openTube();
     }
 
     private void stopShare() {

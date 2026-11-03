@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Cho app con Tube for me: tìm kiếm giọng nói, chạy nền -->
@@ -26,7 +25,7 @@
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
 
-        <!-- Màn hình chính: chiếu màn hình lên TV -->
+        <!-- Màn hình chính: bật chiếu Tube for me lên TV -->
         <activity
             android:name="com.screencast.app.MainActivity"
             android:exported="true">
@@ -39,7 +38,7 @@
         <service
             android:name="com.screencast.app.ScreenService"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- App con: Tube for me (mở từ nút trong màn hình chính) -->
         <activity

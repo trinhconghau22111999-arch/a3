@@ -1,6 +1,7 @@
 package com.ytbrowser.app
 
 import com.screencast.app.R
+import com.screencast.app.ShareBridge
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -792,6 +793,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        ShareBridge.clearActivity(this)
         if (isVideoPlaying) {
             isAutoPausing = true
             webView.evaluateJavascript(
@@ -813,6 +815,7 @@ class MainActivity : AppCompatActivity() {
     // Quay lại màn hình Tube for me (vd vừa chỉnh độ trễ âm thanh ở màn hình chính) -> áp ngay
     override fun onResume() {
         super.onResume()
+        ShareBridge.setActivity(this)  // chỉ màn hình này được chiếu lên TV
         applyAudioDelay()
     }
 

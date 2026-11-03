@@ -8,14 +8,9 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.content.res.Configuration;
-import android.hardware.display.DisplayManager;
-import android.media.projection.MediaProjection;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
-import android.util.DisplayMetrics;
-import android.view.Display;
 
 import org.webrtc.DataChannel;
 import org.webrtc.DefaultVideoDecoderFactory;
@@ -28,7 +23,6 @@ import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpParameters;
 import org.webrtc.RtpSender;
-import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
@@ -93,13 +87,8 @@ public class ScreenService extends Service {
             return START_NOT_STICKY;
         }
         startForegroundNotification();
-        Intent data = intent.getParcelableExtra("data");
-        if (data == null) {
-            stopSelf();
-            return START_NOT_STICKY;
-        }
         try {
-            startAll(data);
+            startAll();
         } catch (Exception e) {
             e.printStackTrace();
             stopSelf();
@@ -117,20 +106,20 @@ public class ScreenService extends Service {
             nb = new Notification.Builder(this);
         }
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
-        Notification n = nb.setContentTitle("Đang chiếu màn hình")
+        Notification n = nb.setContentTitle("Đang chiếu Tube for me")
                 .setContentText("Mở trình duyệt TV: http://" + getIp() + ":" + PORT)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .build();
         if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } else {
             startForeground(1, n);
         }
     }
 
-    private void startAll(Intent data) throws Exception {
+    private void startAll() throws Exception {
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (wm != null) {
             wifiLock = wm.createWifiLock(
@@ -150,43 +139,14 @@ public class ScreenService extends Service {
         source = factory.createVideoSource(true);
         track = factory.createVideoTrack("screen", source);
 
-        capturer = new ScreenCapturerAndroid(data, new MediaProjection.Callback() {
-            @Override
-            public void onStop() {
-                stopSelf();
-            }
-        });
+        // Chỉ chụp cửa sổ Tube for me, không chụp toàn màn hình
+        capturer = new WindowCapturer(MAX_SIDE);
         helper = SurfaceTextureHelper.create("capture", egl.getEglBaseContext());
         capturer.initialize(helper, getApplicationContext(), source.getCapturerObserver());
-        int[] sz = fit();
-        capturer.startCapture(sz[0], sz[1], FPS);
+        capturer.startCapture(1280, 720, FPS);
 
         server = new WebServer();
         server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-    }
-
-    private int[] fit() {
-        DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
-        Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
-        DisplayMetrics m = new DisplayMetrics();
-        d.getRealMetrics(m);
-        float s = Math.min(1f, MAX_SIDE / (float) Math.max(m.widthPixels, m.heightPixels));
-        int w = ((int) (m.widthPixels * s)) & ~1;
-        int h = ((int) (m.heightPixels * s)) & ~1;
-        return new int[]{w, h};
-    }
-
-    // Xoay ngang / dọc thì đổi kích thước video theo
-    @Override
-    public void onConfigurationChanged(Configuration c) {
-        super.onConfigurationChanged(c);
-        if (capturer != null) {
-            try {
-                int[] sz = fit();
-                capturer.changeCaptureFormat(sz[0], sz[1], FPS);
-            } catch (Exception ignored) {
-            }
-        }
     }
 
     // ---------- WebRTC ----------
