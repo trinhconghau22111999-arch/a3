@@ -23,6 +23,7 @@ public class MainActivity extends Activity {
     private SeekBar delayBar;
     private SharedPreferences sp;
     private int delayMs;
+    private boolean openAfterStart;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -47,7 +48,7 @@ public class MainActivity extends Activity {
         btn = new Button(this);
         btn.setOnClickListener(v -> {
             if (ScreenService.running) stopShare();
-            else startShare();
+            else startShare(true);
         });
 
         Button ytBtn = new Button(this);
@@ -101,6 +102,9 @@ public class MainActivity extends Activity {
         sv.addView(root);
         setContentView(sv);
         refresh();
+
+        // Mở app là chiếu sẵn luôn (không tự mở Tube for me, ở lại màn hình này)
+        if (b == null && !ScreenService.running) startShare(false);
     }
 
     @Override
@@ -131,7 +135,7 @@ public class MainActivity extends Activity {
             }
             btn.setText("Dừng chiếu");
         } else {
-            info.setText("Điện thoại và TV phải dùng chung WiFi.\nBấm nút bên dưới để bắt đầu, app sẽ tự mở Tube for me.");
+            info.setText("Điện thoại và TV phải dùng chung WiFi.\nBấm nút bên dưới để chiếu lại, app sẽ tự mở Tube for me.");
             btn.setText("Bắt đầu chiếu");
         }
     }
@@ -140,7 +144,8 @@ public class MainActivity extends Activity {
         startActivity(new Intent().setClassName(getPackageName(), "com.ytbrowser.app.MainActivity"));
     }
 
-    private void startShare() {
+    private void startShare(boolean openTubeAfter) {
+        openAfterStart = openTubeAfter;
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
@@ -161,7 +166,7 @@ public class MainActivity extends Activity {
         else startService(i);
         ScreenService.running = true;
         refresh();
-        openTube();
+        if (openAfterStart) openTube();
     }
 
     private void stopShare() {
