@@ -7,15 +7,28 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Cho app con Tube for me: tìm kiếm giọng nói, chạy nền -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="false"
         android:label="Chiếu màn hình"
-        android:theme="@android:style/Theme.DeviceDefault.Light">
+        android:theme="@android:style/Theme.DeviceDefault.Light"
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true">
 
+        <!-- Màn hình chính: chiếu màn hình lên TV -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.screencast.app.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -24,8 +37,23 @@
         </activity>
 
         <service
-            android:name=".ScreenService"
+            android:name="com.screencast.app.ScreenService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!-- App con: Tube for me (mở từ nút trong màn hình chính) -->
+        <activity
+            android:name="com.ytbrowser.app.MainActivity"
+            android:label="Tube for me"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.NoActionBar" />
+
+        <service
+            android:name="com.ytbrowser.app.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

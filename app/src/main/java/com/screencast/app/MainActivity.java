@@ -45,9 +45,15 @@ public class MainActivity extends Activity {
             else startShare();
         });
 
+        Button ytBtn = new Button(this);
+        ytBtn.setText("Mở Tube for me");
+        ytBtn.setOnClickListener(v -> startActivity(
+                new Intent().setClassName(getPackageName(), "com.ytbrowser.app.MainActivity")));
+
         root.addView(title);
         root.addView(info);
         root.addView(btn);
+        root.addView(ytBtn);
         setContentView(root);
         refresh();
     }
