@@ -81,19 +81,26 @@ public class ScreenService extends Service {
     @SuppressWarnings("deprecation")
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (factory != null) return START_NOT_STICKY;
-        if (intent == null) {
-            stopSelf();
-            return START_NOT_STICKY;
-        }
+        if (factory != null) return START_STICKY;
+        // intent == null: hệ thống tự khởi động lại service sau khi bị dọn (vd vuốt thoát app) ->
+        // vẫn bật chiếu lại như bình thường thay vì tự dừng.
+        running = true;
         startForegroundNotification();
         try {
             startAll();
         } catch (Exception e) {
             e.printStackTrace();
             stopSelf();
+            return START_NOT_STICKY;
         }
-        return START_NOT_STICKY;
+        return START_STICKY;
+    }
+
+    // Vuốt thoát app khỏi danh sách gần đây: KHÔNG dừng chiếu. Service vẫn chạy, mở lại
+    // Tube for me là hình tiếp tục được chiếu.
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
     }
 
     private void startForegroundNotification() {
@@ -107,7 +114,7 @@ public class ScreenService extends Service {
         }
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         Notification n = nb.setContentTitle("Đang chiếu Tube for me")
-                .setContentText("Mở trình duyệt TV: http://" + getIp() + ":" + PORT)
+                .setContentText("TV: http://" + getIp() + ":" + PORT + " • mở lại Tube for me để chiếu tiếp")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentIntent(pi)
                 .setOngoing(true)

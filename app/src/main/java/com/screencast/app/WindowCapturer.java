@@ -108,15 +108,16 @@ public class WindowCapturer implements VideoCapturer {
         final long t0 = SystemClock.uptimeMillis();
         Activity a = ShareBridge.get();
         if (a == null || a.isFinishing() || a.isDestroyed()) {
-            next(t0, 200);
+            keepAlive(t0);
             return;
         }
         final Window win = a.getWindow();
         final View decor = win.peekDecorView();
         if (decor == null || decor.getWidth() <= 0 || decor.getHeight() <= 0 || !decor.isShown()) {
-            next(t0, 200);
+            keepAlive(t0);
             return;
         }
+        hasLive = true;
         int sw = decor.getWidth(), sh = decor.getHeight();
         float s = Math.min(1f, maxSide / (float) Math.max(sw, sh));
         final int tw = Math.max(2, ((int) (sw * s)) & ~1);
@@ -150,6 +151,20 @@ public class WindowCapturer implements VideoCapturer {
                 }
             });
         }
+    }
+
+    private volatile boolean hasLive = false;
+
+    /**
+     * Tube for me đang ở nền (bấm Home / thoát app): không có hình mới, nên cứ ~2 lần/giây gửi
+     * lại khung hình cuối. Nhờ vậy kết nối với TV không bị đứt/đen, TV giữ nguyên hình cuối và
+     * tự chiếu tiếp ngay khi mở lại Tube for me. Không bao giờ chụp app khác.
+     */
+    private void keepAlive(long t0) {
+        if (hasLive && bitmap != null && !bitmap.isRecycled()) {
+            push(bitmap.getWidth(), bitmap.getHeight());
+        }
+        next(t0, 500);
     }
 
     private void push(int tw, int th) {
