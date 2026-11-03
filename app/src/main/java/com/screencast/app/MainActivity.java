@@ -3,6 +3,7 @@ package com.screencast.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
@@ -10,6 +11,8 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
@@ -18,6 +21,10 @@ public class MainActivity extends Activity {
 
     private TextView info;
     private Button btn;
+    private TextView delayLabel;
+    private SeekBar delayBar;
+    private SharedPreferences sp;
+    private int delayMs;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -54,7 +61,48 @@ public class MainActivity extends Activity {
         root.addView(info);
         root.addView(btn);
         root.addView(ytBtn);
-        setContentView(root);
+
+        // Độ trễ âm thanh của Tube for me (cho khớp với độ trễ chia sẻ màn hình)
+        sp = getSharedPreferences("ytbrowser_prefs", MODE_PRIVATE);
+        delayMs = sp.getInt("audio_delay_ms", 150);
+        delayLabel = new TextView(this);
+        delayLabel.setTextSize(16);
+        delayLabel.setGravity(Gravity.CENTER);
+        delayLabel.setPadding(0, pad, 0, 0);
+        delayBar = new SeekBar(this);
+        delayBar.setMax(100); // 0..1000 ms, mỗi nấc 10 ms
+        delayBar.setProgress(delayMs / 10);
+        delayBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int p, boolean fromUser) {
+                if (fromUser) saveDelay(p * 10);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        Button minus = new Button(this);
+        minus.setText("−10 ms");
+        minus.setOnClickListener(v -> saveDelay(Math.max(0, delayMs - 10)));
+        Button plus = new Button(this);
+        plus.setText("+10 ms");
+        plus.setOnClickListener(v -> saveDelay(Math.min(1000, delayMs + 10)));
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER);
+        row.addView(minus);
+        row.addView(plus);
+        root.addView(delayLabel);
+        root.addView(delayBar);
+        root.addView(row);
+        updateDelayUi();
+
+        ScrollView sv = new ScrollView(this);
+        sv.setFillViewport(true);
+        sv.addView(root);
+        setContentView(sv);
         refresh();
     }
 
@@ -62,6 +110,17 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refresh();
+    }
+
+    private void saveDelay(int ms) {
+        delayMs = ms;
+        sp.edit().putInt("audio_delay_ms", ms).apply();
+        updateDelayUi();
+    }
+
+    private void updateDelayUi() {
+        delayLabel.setText("Độ trễ âm thanh Tube for me: " + delayMs + " ms");
+        if (delayBar.getProgress() != delayMs / 10) delayBar.setProgress(delayMs / 10);
     }
 
     private void refresh() {

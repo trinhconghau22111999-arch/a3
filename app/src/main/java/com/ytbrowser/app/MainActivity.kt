@@ -463,6 +463,7 @@ class MainActivity : AppCompatActivity() {
                 injectBackgroundPlaybackFix()
                 injectBackgroundColor()
                 injectHomeLogoRestartHook()
+                injectAudioDelay()
             }
         }
 
@@ -807,6 +808,70 @@ class MainActivity : AppCompatActivity() {
                 isAutoPausing = false
             }, 450L)
         }
+    }
+
+    // Quay lại màn hình Tube for me (vd vừa chỉnh độ trễ âm thanh ở màn hình chính) -> áp ngay
+    override fun onResume() {
+        super.onResume()
+        applyAudioDelay()
+    }
+
+    // ---- Trễ âm thanh: làm tiếng phát ra (tai nghe/loa) chậm lại một chút để khớp với độ trễ ----
+    // của hình khi chia sẻ màn hình lên TV. Giá trị (ms) do người dùng chỉnh ở màn hình chính
+    // (lưu trong prefs "audio_delay_ms"). Cách làm: cho mọi thẻ video/audio đi qua DelayNode của
+    // Web Audio API. Chỉ nối vào khi AudioContext đã chạy (running) để không bao giờ bị mất tiếng.
+    private fun audioDelayMs(): Int = prefs.getInt("audio_delay_ms", 150)
+
+    private fun applyAudioDelay() {
+        webView.evaluateJavascript(
+            "window.__ytbrowser_setDelay && window.__ytbrowser_setDelay(${audioDelayMs()});", null
+        )
+    }
+
+    private fun injectAudioDelay() {
+        val js = """
+            (function() {
+                var DELAY = ${audioDelayMs()};
+                if (window.__ytbrowser_setDelay) { window.__ytbrowser_setDelay(DELAY); return; }
+                var ms = DELAY, ctx = null, node = null;
+                function ensure() {
+                    if (!ctx) {
+                        var AC = window.AudioContext || window.webkitAudioContext;
+                        if (!AC) return false;
+                        ctx = new AC({ latencyHint: 'interactive' });
+                        node = ctx.createDelay(2.0);
+                        node.delayTime.value = ms / 1000;
+                        node.connect(ctx.destination);
+                    }
+                    if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
+                    return ctx.state === 'running';
+                }
+                function scan() {
+                    if (!ctx && ms <= 0) return;
+                    if (!ensure()) return;
+                    var els = document.querySelectorAll('video, audio');
+                    for (var i = 0; i < els.length; i++) {
+                        var v = els[i];
+                        if (v.__ytbrowser_dly) continue;
+                        try {
+                            ctx.createMediaElementSource(v).connect(node);
+                            v.__ytbrowser_dly = true;
+                        } catch (e) {}
+                    }
+                }
+                window.__ytbrowser_setDelay = function(v) {
+                    ms = Math.max(0, Math.min(1900, v));
+                    if (node) node.delayTime.value = ms / 1000;
+                    scan();
+                };
+                ['click', 'touchstart', 'keydown', 'play', 'playing'].forEach(function(ev) {
+                    document.addEventListener(ev, scan, true);
+                });
+                setInterval(scan, 1000);
+                scan();
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
     }
 
     override fun onDestroy() {

@@ -231,7 +231,6 @@ public class ScreenService extends Service {
         PeerConnection.RTCConfiguration cfg = new PeerConnection.RTCConfiguration(new ArrayList<PeerConnection.IceServer>());
         cfg.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
         cfg.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE;
-        cfg.disableIpv6 = true;
 
         final PeerConnection pc = factory.createPeerConnection(cfg, new ObsBase() {
             @Override
