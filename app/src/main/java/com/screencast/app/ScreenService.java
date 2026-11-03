@@ -50,7 +50,7 @@ public class ScreenService extends Service {
     public static volatile boolean running = false;
 
     // Đổi 2 số này nếu muốn nét hơn / mượt hơn
-    private static final int MAX_SIDE = 1600; // cạnh dài nhất của video (px)
+    private static final int MAX_SIDE = 1280; // cạnh dài nhất của video (px)
     private static final int FPS = 30;
     private static final int MAX_BITRATE = 8_000_000; // 8 Mbps
     private static final int MIN_BITRATE = 1_000_000; // 1 Mbps
@@ -136,7 +136,7 @@ public class ScreenService extends Service {
                 .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()))
                 .createPeerConnectionFactory();
 
-        source = factory.createVideoSource(true);
+        source = factory.createVideoSource(false); // nội dung là video, không phải màn hình tĩnh -> ưu tiên mượt
         track = factory.createVideoTrack("screen", source);
 
         // Chỉ chụp cửa sổ Tube for me, không chụp toàn màn hình

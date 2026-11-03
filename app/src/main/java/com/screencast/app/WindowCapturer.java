@@ -93,7 +93,7 @@ public class WindowCapturer implements VideoCapturer {
 
     @Override
     public boolean isScreencast() {
-        return true;
+        return false;
     }
 
     private void next(long t0, long minDelay) {
