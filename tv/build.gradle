@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.screencast.tv'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.screencast.tvreceiver"
+        minSdk 21
+        targetSdk 34
+        def buildVersionCode = (System.currentTimeMillis() / 1000L).toInteger()
+        versionCode buildVersionCode
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        fixed {
+            storeFile file("../keystore/ytbrowser-debug.keystore")
+            storePassword "ytbrowser123"
+            keyAlias "ytbrowser"
+            keyPassword "ytbrowser123"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixed
+        }
+        debug {
+            signingConfig signingConfigs.fixed
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

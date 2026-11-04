@@ -23,12 +23,18 @@ jobs:
         with:
           name: ScreenCast-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TV-apk
+          path: tv/build/outputs/apk/debug/tv-debug.apk
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "Tải APK - Build #${{ github.run_number }}"
-          body: "Bấm vào file app-debug.apk bên dưới để tải"
-          files: app/build/outputs/apk/debug/app-debug.apk
+          body: "app-debug.apk = cài trên điện thoại. tv-debug.apk = cài trên TV (tự tìm điện thoại, không cần gõ link)"
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            tv/build/outputs/apk/debug/tv-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

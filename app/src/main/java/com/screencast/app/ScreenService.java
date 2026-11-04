@@ -8,6 +8,8 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -31,6 +33,9 @@ import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
 import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InterfaceAddress;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -47,6 +52,9 @@ import fi.iki.elonen.NanoHTTPD;
 
 public class ScreenService extends Service {
     public static final int PORT = 8080;
+    // TV tự tìm điện thoại: điện thoại phát thông báo UDP mỗi 2 giây + đăng ký dịch vụ mDNS (NSD)
+    public static final int BEACON_PORT = 8081;
+    public static final String NSD_TYPE = "_screencast._tcp.";
     public static volatile boolean running = false;
 
     // Đổi 2 số này nếu muốn nét hơn / mượt hơn
@@ -65,6 +73,10 @@ public class ScreenService extends Service {
     private VideoTrack track;
     private WebServer server;
     private WifiManager.WifiLock wifiLock;
+    private NsdManager nsd;
+    private NsdManager.RegistrationListener nsdListener;
+    private volatile boolean beaconRun;
+    private Thread beaconThread;
     private final List<PeerConnection> peers = new CopyOnWriteArrayList<>();
 
     @Override
@@ -154,6 +166,70 @@ public class ScreenService extends Service {
 
         server = new WebServer();
         server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        startAnnounce();
+    }
+
+    // ---------- Báo cho TV biết địa chỉ (không cần gõ link) ----------
+
+    private void startAnnounce() {
+        try {
+            nsd = (NsdManager) getSystemService(Context.NSD_SERVICE);
+            NsdServiceInfo info = new NsdServiceInfo();
+            info.setServiceName("TubeCast");
+            info.setServiceType(NSD_TYPE);
+            info.setPort(PORT);
+            nsdListener = new NsdManager.RegistrationListener() {
+                public void onRegistrationFailed(NsdServiceInfo i, int e) {}
+                public void onUnregistrationFailed(NsdServiceInfo i, int e) {}
+                public void onServiceRegistered(NsdServiceInfo i) {}
+                public void onServiceUnregistered(NsdServiceInfo i) {}
+            };
+            nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, nsdListener);
+        } catch (Exception ignored) {
+        }
+
+        beaconRun = true;
+        beaconThread = new Thread(() -> {
+            DatagramSocket socket = null;
+            try {
+                socket = new DatagramSocket();
+                socket.setBroadcast(true);
+                while (beaconRun) {
+                    try {
+                        for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                            if (!ni.isUp() || ni.isLoopback()) continue;
+                            for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                                InetAddress a = ia.getAddress();
+                                InetAddress b = ia.getBroadcast();
+                                if (!(a instanceof Inet4Address) || b == null) continue;
+                                byte[] msg = ("SCREENCAST1|" + a.getHostAddress() + "|" + PORT).getBytes("UTF-8");
+                                socket.send(new DatagramPacket(msg, msg.length, b, BEACON_PORT));
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (socket != null) socket.close();
+            }
+        }, "beacon");
+        beaconThread.setDaemon(true);
+        beaconThread.start();
+    }
+
+    private void stopAnnounce() {
+        beaconRun = false;
+        if (beaconThread != null) beaconThread.interrupt();
+        try {
+            if (nsd != null && nsdListener != null) nsd.unregisterService(nsdListener);
+        } catch (Exception ignored) {
+        }
     }
 
     // ---------- WebRTC ----------
@@ -327,6 +403,7 @@ public class ScreenService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        stopAnnounce();
         try {
             if (server != null) server.stop();
         } catch (Exception ignored) {
