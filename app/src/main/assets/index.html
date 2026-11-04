@@ -15,9 +15,25 @@
 <div id="s">Đang kết nối...</div>
 <script>
 const v = document.getElementById('v'), s = document.getElementById('s');
-let pc = null, timer = null;
+let pc = null, timer = null, wd = null;
 
 function say(t) { s.textContent = t; s.style.display = t ? 'block' : 'none'; }
+// Nếu đã có hình nhưng ngừng nhận khung hình > 8 giây (điện thoại đổi mạng / service khởi động lại)
+// thì tự kết nối lại, không cần thoát app trên điện thoại.
+function watch(p) {
+  clearInterval(wd);
+  let last = -1, since = Date.now();
+  wd = setInterval(async () => {
+    if (p !== pc) { clearInterval(wd); return; }
+    try {
+      const st = await p.getStats();
+      let n = -1;
+      st.forEach(r => { if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video')) n = r.packetsReceived; });
+      if (n !== last) { last = n; since = Date.now(); }
+      else if (last > 0 && Date.now() - since > 8000) { clearInterval(wd); retry('Mất kết nối, đang thử lại...'); }
+    } catch (e) {}
+  }, 2000);
+}
 function retry(t) { say(t); clearTimeout(timer); timer = setTimeout(start, 2000); }
 
 async function start() {
@@ -67,6 +83,7 @@ async function start() {
     });
     if (!res.ok) throw new Error('http ' + res.status);
     await p.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+    watch(p);
   } catch (e) {
     if (p === pc) retry('Chưa kết nối được, hãy kiểm tra app trên điện thoại...');
   }

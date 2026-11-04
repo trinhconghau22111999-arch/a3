@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
     private String curHost = null;
     private int curPort = 0;
     private long lastSeen = 0;
+    private String curSid = null;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -95,6 +96,7 @@ public class MainActivity extends Activity {
 
     private void goSearching() {
         curHost = null;
+        curSid = null;
         web.setVisibility(View.INVISIBLE);
         web.loadUrl("about:blank");
         status.setVisibility(View.VISIBLE);
@@ -118,9 +120,11 @@ public class MainActivity extends Activity {
         return "";
     }
 
-    private void onPhoneFound(String host, int port) {
+    private void onPhoneFound(String host, int port, String sid) {
         lastSeen = System.currentTimeMillis();
-        if (host.equals(curHost) && port == curPort) return;
+        boolean sameSid = sid == null || curSid == null || sid.equals(curSid);
+        if (host.equals(curHost) && port == curPort && sameSid) return;
+        curSid = sid;
         curHost = host;
         curPort = port;
         status.setText("Đã thấy điện thoại, đang kết nối...");
@@ -168,10 +172,11 @@ public class MainActivity extends Activity {
                         }
                         String m = new String(p.getData(), 0, p.getLength(), "UTF-8").trim();
                         String[] parts = m.split("\\|");
-                        if (parts.length == 3 && parts[0].equals("SCREENCAST1")) {
+                        if (parts.length >= 3 && parts[0].equals("SCREENCAST1")) {
                             final String host = parts[1];
                             final int port = Integer.parseInt(parts[2]);
-                            ui.post(() -> onPhoneFound(host, port));
+                            final String sid = parts.length >= 4 ? parts[3] : null;
+                            ui.post(() -> onPhoneFound(host, port, sid));
                         }
                     }
                 } catch (Exception e) {
@@ -206,7 +211,7 @@ public class MainActivity extends Activity {
                                 if (i.getHost() == null) return;
                                 final String host = i.getHost().getHostAddress();
                                 final int port = i.getPort();
-                                ui.post(() -> onPhoneFound(host, port));
+                                ui.post(() -> onPhoneFound(host, port, null));
                             }
                         });
                     } catch (Exception e) {

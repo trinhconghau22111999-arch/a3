@@ -13,6 +13,7 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 
 import org.webrtc.DataChannel;
 import org.webrtc.DefaultVideoDecoderFactory;
@@ -73,6 +74,8 @@ public class ScreenService extends Service {
     private VideoTrack track;
     private WebServer server;
     private WifiManager.WifiLock wifiLock;
+    private PowerManager.WakeLock cpuLock;
+    private final long sessionId = System.currentTimeMillis();
     private NsdManager nsd;
     private NsdManager.RegistrationListener nsdListener;
     private volatile boolean beaconRun;
@@ -147,6 +150,16 @@ public class ScreenService extends Service {
             wifiLock.acquire();
         }
 
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                cpuLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "screencast:cpu");
+                cpuLock.setReferenceCounted(false);
+                cpuLock.acquire();
+            }
+        } catch (Exception ignored) {
+        }
+
         PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(getApplicationContext()).createInitializationOptions());
         egl = EglBase.create();
@@ -195,6 +208,15 @@ public class ScreenService extends Service {
                 socket = new DatagramSocket();
                 socket.setBroadcast(true);
                 while (beaconRun) {
+                    // Web server chết (đổi mạng / hệ thống dọn socket) -> bật lại để TV nối lại được
+                    try {
+                        if (server == null || !server.isAlive()) {
+                            try { if (server != null) server.stop(); } catch (Exception ignored) {}
+                            server = new WebServer();
+                            server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+                        }
+                    } catch (Exception ignored) {
+                    }
                     try {
                         for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                             if (!ni.isUp() || ni.isLoopback()) continue;
@@ -202,7 +224,7 @@ public class ScreenService extends Service {
                                 InetAddress a = ia.getAddress();
                                 InetAddress b = ia.getBroadcast();
                                 if (!(a instanceof Inet4Address) || b == null) continue;
-                                byte[] msg = ("SCREENCAST1|" + a.getHostAddress() + "|" + PORT).getBytes("UTF-8");
+                                byte[] msg = ("SCREENCAST1|" + a.getHostAddress() + "|" + PORT + "|" + sessionId).getBytes("UTF-8");
                                 socket.send(new DatagramPacket(msg, msg.length, b, BEACON_PORT));
                             }
                         }
@@ -422,6 +444,7 @@ public class ScreenService extends Service {
         if (factory != null) factory.dispose();
         if (egl != null) egl.release();
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
         stopForeground(true);
         super.onDestroy();
     }
