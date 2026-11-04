@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -97,7 +98,24 @@ public class MainActivity extends Activity {
         web.setVisibility(View.INVISIBLE);
         web.loadUrl("about:blank");
         status.setVisibility(View.VISIBLE);
-        status.setText("Đang tìm điện thoại...\n\nMở app trên điện thoại và bật chiếu\n(điện thoại và TV dùng chung Wi-Fi)");
+        status.setText("Đang tìm điện thoại...\n\nMở app trên điện thoại và bật chiếu\n(điện thoại và TV dùng chung Wi-Fi)" + webViewWarning());
+    }
+
+    // TV Android 8 hay có WebView cũ; WebRTC cần WebView tương đối mới
+    private String webViewWarning() {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                android.content.pm.PackageInfo pi = WebView.getCurrentWebViewPackage();
+                if (pi != null && pi.versionName != null) {
+                    int major = Integer.parseInt(pi.versionName.split("\\.")[0]);
+                    if (major < 70) {
+                        return "\n\n⚠ Android System WebView trên TV đang cũ (" + pi.versionName + ").\nNếu không lên hình, hãy cập nhật WebView.";
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
     }
 
     private void onPhoneFound(String host, int port) {
