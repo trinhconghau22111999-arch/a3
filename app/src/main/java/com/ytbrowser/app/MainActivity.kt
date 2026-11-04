@@ -48,6 +48,7 @@ import java.io.InputStreamReader
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private var syncCtl: SyncController? = null
     private lateinit var progressBar: ProgressBar
     private lateinit var prefs: android.content.SharedPreferences
 
@@ -172,6 +173,9 @@ class MainActivity : AppCompatActivity() {
 
         loadBlocklist()
         setupWebView()
+
+        // Đồng bộ với TV: điện thoại là máy chủ, TV tự tìm qua Wi-Fi và phát cùng video
+        syncCtl = SyncController(webView, SyncServer { m -> syncCtl?.onTvMessage(m) }).also { it.start() }
 
         // Nhận từ khóa từ app Nokia (AI giọng nói): extra "search_query" -> mở thẳng trang kết quả tìm kiếm
         val q = intent?.getStringExtra("search_query")
@@ -919,6 +923,8 @@ class MainActivity : AppCompatActivity() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         resumePlaybackHandler.removeCallbacksAndMessages(null)
+        syncCtl?.stop()
+        syncCtl = null
         playbackServiceRunning = false
         stopService(Intent(this, PlaybackService::class.java))
         super.onDestroy()

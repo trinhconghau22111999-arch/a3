@@ -49,6 +49,13 @@ public class MainActivity extends Activity {
     private long lastSeen = 0;
     private String curSid = null;
 
+    // Đồng bộ YouTube với điện thoại (beacon SYNC1)
+    private static final String SYNC_URL = "https://m.youtube.com/";
+    private SyncClient sync;
+    private String syncHost = null;
+    private int syncPort = 0;
+    private long syncSeen = 0;
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -67,7 +74,7 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
-                if (r.isForMainFrame()) {
+                if (r.isForMainFrame() && sync == null) {
                     // Không vào được trang -> quay lại tìm điện thoại
                     ui.post(() -> goSearching());
                 }
@@ -121,6 +128,7 @@ public class MainActivity extends Activity {
     }
 
     private void onPhoneFound(String host, int port, String sid) {
+        if (syncActive()) return; // đang đồng bộ YouTube thì không nhận chiếu màn hình
         lastSeen = System.currentTimeMillis();
         boolean sameSid = sid == null || curSid == null || sid.equals(curSid);
         if (host.equals(curHost) && port == curPort && sameSid) return;
@@ -133,10 +141,38 @@ public class MainActivity extends Activity {
         ui.postDelayed(() -> { if (curHost != null) status.setVisibility(View.GONE); }, 1500);
     }
 
+    private boolean syncActive() {
+        return sync != null && System.currentTimeMillis() - syncSeen < LOST_AFTER_MS;
+    }
+
+    private void onSyncFound(String host, int port) {
+        syncSeen = System.currentTimeMillis();
+        if (sync != null && host.equals(syncHost) && port == syncPort) return;
+        if (sync != null) sync.stop();
+        syncHost = host;
+        syncPort = port;
+        curHost = null;
+        curSid = null;
+        status.setVisibility(View.GONE);
+        web.setVisibility(View.VISIBLE);
+        String cur = web.getUrl();
+        if (cur == null || !cur.startsWith("https://m.youtube.com")) web.loadUrl(SYNC_URL);
+        sync = new SyncClient(ui, web, host, port);
+        sync.start();
+    }
+
+    private void stopSync() {
+        if (sync != null) sync.stop();
+        sync = null;
+        syncHost = null;
+        goSearching();
+    }
+
     private final Runnable watchdog = new Runnable() {
         @Override
         public void run() {
             if (curHost != null && System.currentTimeMillis() - lastSeen > LOST_AFTER_MS) goSearching();
+            if (sync != null && System.currentTimeMillis() - syncSeen > LOST_AFTER_MS) stopSync();
             ui.postDelayed(this, 3000);
         }
     };
@@ -172,6 +208,12 @@ public class MainActivity extends Activity {
                         }
                         String m = new String(p.getData(), 0, p.getLength(), "UTF-8").trim();
                         String[] parts = m.split("\\|");
+                        if (parts.length >= 3 && parts[0].equals("SYNC1")) {
+                            final String syncH = parts[1];
+                            final int syncP = Integer.parseInt(parts[2]);
+                            ui.post(() -> onSyncFound(syncH, syncP));
+                            continue;
+                        }
                         if (parts.length >= 3 && parts[0].equals("SCREENCAST1")) {
                             final String host = parts[1];
                             final int port = Integer.parseInt(parts[2]);
@@ -254,6 +296,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (sync != null) sync.stop();
         web.destroy();
         super.onDestroy();
     }
