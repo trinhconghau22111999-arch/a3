@@ -22,6 +22,8 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
         private const val DRIFT_LIMIT_SEC = 0.1         // ngưỡng lệch
         private const val SEEK_LANDED_SEC = 0.05        // TV được coi là đã tua tới đúng chỗ khi sai dưới mức này
         private const val SEEK_GIVE_UP_MS = 3000L       // quá lâu mà TV chưa sẵn sàng thì phát chung luôn
+        private const val WARMUP_MS = 3000L             // video mới: cả hai tạm dừng để đệm trước khi phát
+        private const val WARMUP_MAX_MS = 15000L        // TV chưa sẵn sàng quá lâu thì vẫn phát chung
         private const val STALE_TV_MS = 1000L
         private val VID_REGEX = Regex("[?&]v=([A-Za-z0-9_-]{6,})")
 
@@ -47,6 +49,8 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
     private var seeking = false       // điện thoại đang tạm dừng, chờ TV tua xong
     private var seekPos = 0.0
     private var seekSentAt = 0L
+    private var warming = false       // video mới đang đệm: cả hai tạm dừng
+    private var warmStartedAt = 0L
 
     private val loop = object : Runnable {
         override fun run() {
@@ -116,6 +120,8 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
             holdForAd = false
             holdPlaying = false
             seeking = false
+            warming = true
+            warmStartedAt = now
             server.send(JSONObject().put("cmd", "load").put("vid", vid))
             return
         }
@@ -140,6 +146,17 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
                 resync(p)
                 return
             }
+        }
+
+        // 2b) Video mới: cả hai tạm dừng để đệm WARMUP_MS, rồi mới phát chung (không ngập ngừng lúc đầu)
+        if (warming) {
+            web.evaluateJavascript(PAUSE_JS, null)
+            val elapsed = now - warmStartedAt
+            if ((elapsed >= WARMUP_MS && tvReady) || elapsed >= WARMUP_MAX_MS) {
+                warming = false
+                resync(p)
+            }
+            return
         }
 
         // 3) Đang tua và chờ TV sẵn sàng: điện thoại vẫn tạm dừng
