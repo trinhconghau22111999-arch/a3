@@ -27,30 +27,24 @@
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
 
-        <!-- Màn hình chính: bật chiếu Tube for me lên TV -->
-        <activity
-            android:name="com.screencast.app.MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
         <service
             android:name="com.screencast.app.ScreenService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- App con: Tube for me (mở từ nút trong màn hình chính) -->
+        <!-- Màn hình duy nhất: vào thẳng Tube for me, chiếu lên TV tự bật cùng lúc -->
         <activity
             android:name="com.ytbrowser.app.MainActivity"
-            android:label="Tube for me"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="unspecified"
-            android:theme="@style/Theme.NoActionBar" />
+            android:theme="@style/Theme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name="com.ytbrowser.app.PlaybackService"

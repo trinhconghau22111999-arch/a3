@@ -174,12 +174,34 @@ class MainActivity : AppCompatActivity() {
         loadBlocklist()
         setupWebView()
 
+        // Mở app là chiếu sẵn luôn (không còn màn hình ngoài)
+        startScreenShare()
+
         // Đồng bộ với TV: điện thoại là máy chủ, TV tự tìm qua Wi-Fi và phát cùng video
         syncCtl = SyncController(webView, SyncServer { m -> syncCtl?.onTvMessage(m) }).also { it.start() }
 
         // Nhận từ khóa từ app Nokia (AI giọng nói): extra "search_query" -> mở thẳng trang kết quả tìm kiếm
         val q = intent?.getStringExtra("search_query")
         if (!q.isNullOrBlank()) performYoutubeSearch(q) else webView.loadUrl(START_URL)
+    }
+
+    // Bật dịch vụ chiếu lên TV ngay khi vào app (trước đây nằm ở màn hình ngoài)
+    private fun startScreenShare() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                !prefs.getBoolean("asked_notif", false)) {
+                prefs.edit().putBoolean("asked_notif", true).apply()
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
+            }
+            if (!com.screencast.app.ScreenService.running) {
+                val i = Intent(this, com.screencast.app.ScreenService::class.java)
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
+                com.screencast.app.ScreenService.running = true
+            }
+        } catch (e: Exception) {
+            Log.w("YTBrowser", "Không bật được chiếu lên TV", e)
+        }
     }
 
     // App đang mở sẵn (launchMode singleTask) mà Nokia gọi lại kèm từ khóa mới -> tìm luôn
@@ -826,7 +848,7 @@ class MainActivity : AppCompatActivity() {
     // của hình khi chia sẻ màn hình lên TV. Giá trị (ms) do người dùng chỉnh ở màn hình chính
     // (lưu trong prefs "audio_delay_ms"). Cách làm: cho mọi thẻ video/audio đi qua DelayNode của
     // Web Audio API. Chỉ nối vào khi AudioContext đã chạy (running) để không bao giờ bị mất tiếng.
-    private fun audioDelayMs(): Int = prefs.getInt("audio_delay_ms", 390)
+    private fun audioDelayMs(): Int = prefs.getInt("audio_delay_ms", 250)
 
     private fun applyAudioDelay() {
         webView.evaluateJavascript(

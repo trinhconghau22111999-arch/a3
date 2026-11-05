@@ -33,6 +33,26 @@ public class SyncClient {
             "if(ad){var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button');if(b)b.click();}" +
             "return JSON.stringify({url:location.href,t:v?v.currentTime:-1,paused:v?v.paused:true," +
             "ready:!!(v&&v.readyState>=3),ad:ad});})()";
+    // Luôn bật tiếng (chỉ im khi người dùng chỉnh âm lượng TV về 0) và tự phóng to video
+    // khi đang ở trang xem (watch/shorts): video phủ kín màn hình, nền đen.
+    private static final String ENFORCE_JS =
+            "(function(){try{var v=document.querySelector('video');" +
+            "var p=document.querySelector('.html5-video-player');" +
+            "if(!document.getElementById('__tvfs_css')){var s=document.createElement('style');s.id='__tvfs_css';" +
+            "s.textContent='html.__tvfs video{position:fixed!important;left:0!important;top:0!important;" +
+            "width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;" +
+            "object-fit:contain!important;z-index:2147483647!important;background:#000!important;transform:none!important}" +
+            "html.__tvfs body{overflow:hidden!important}" +
+            "html.__tvfs .__tvfs_anc{transform:none!important;filter:none!important;contain:none!important;" +
+            "perspective:none!important;overflow:visible!important}';" +
+            "(document.head||document.documentElement).appendChild(s);}" +
+            "var on=!!(v&&/^\\/(watch|shorts)/.test(location.pathname));" +
+            "document.documentElement.classList.toggle('__tvfs',on);" +
+            "if(v){if(on){for(var e=v.parentElement;e&&e!==document.body;e=e.parentElement)e.classList.add('__tvfs_anc');}" +
+            "if(v.muted)v.muted=false;if(v.volume<1)v.volume=1;}" +
+            "if(p){if(p.isMuted&&p.isMuted()&&p.unMute)p.unMute();" +
+            "if(p.getVolume&&p.getVolume()<100&&p.setVolume)p.setVolume(100);}" +
+            "}catch(e){}})()";
     private static final String PAUSE_JS =
             "(function(){var v=document.querySelector('video');if(v){v.pause();}})()";
     private static final String PLAY_JS =
@@ -65,6 +85,7 @@ public class SyncClient {
                 if (!running) return;
                 ticks++;
                 if (ticks % PING_REFRESH_TICKS == 0) startPingBurst(5);
+                web.evaluateJavascript(ENFORCE_JS, null);
                 web.evaluateJavascript(STATE_JS, raw -> onState(parseJs(raw)));
                 ui.postDelayed(this, TICK_MS);
             }

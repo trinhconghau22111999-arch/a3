@@ -1,6 +1,6 @@
 # Chiếu Tube for me lên TV qua WiFi (WebRTC)
 
-Bấm "Bắt đầu chiếu" → app tự mở Tube for me, rồi mở địa chỉ hiện ra trên trình duyệt TV.
+Mở app là vào thẳng Tube for me và tự chiếu lên TV (app TV tự tìm điện thoại).
 Chỉ hình trong Tube for me được chiếu (không chụp toàn màn hình, không chụp app khác).
 Thanh "Độ trễ âm thanh" chỉnh tiếng phát ra cho khớp với hình trên TV.
 

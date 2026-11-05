@@ -127,7 +127,7 @@ public class ScreenService extends Service {
         } else {
             nb = new Notification.Builder(this);
         }
-        PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent().setClassName(getPackageName(), "com.ytbrowser.app.MainActivity"), PendingIntent.FLAG_IMMUTABLE);
         Notification n = nb.setContentTitle("Đang chiếu Tube for me")
                 .setContentText("TV: http://" + getIp() + ":" + PORT + " • mở lại Tube for me để chiếu tiếp")
                 .setSmallIcon(android.R.drawable.ic_media_play)
