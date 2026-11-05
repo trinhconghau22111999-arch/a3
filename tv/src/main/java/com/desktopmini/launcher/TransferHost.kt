@@ -24,6 +24,10 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
+// Tệp nhận và tệp ghi hình cũ hơn 1 giờ sẽ bị xoá; kiểm tra mỗi 10 phút
+private const val MAX_FILE_AGE_MS = 60L * 60 * 1000
+private const val PURGE_EVERY_MS = 10L * 60 * 1000
+
 /**
  * Truyền tệp chạy NGẦM (tách từ app Duyệt web cũ): một WebView 1x1 ẩn nạp trang truyentep.html,
  * tự kết nối với mã cố định [CODE] và nhận/gửi tệp qua Firebase + WebRTC như trước.
@@ -54,10 +58,30 @@ class TransferHost(
     private val recordings = HashMap<String, FileOutputStream>()
     private var recSeq = 0
 
+    // ---- Dọn tệp cũ: xoá tệp nhận và ghi hình cũ hơn MAX_FILE_AGE_MS ----
+    private val purgeHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val purgeTask = object : Runnable {
+        override fun run() {
+            purgeOldFiles()
+            purgeHandler.postDelayed(this, PURGE_EVERY_MS)
+        }
+    }
+
+    private fun purgeOldFiles() {
+        val cutoff = System.currentTimeMillis() - MAX_FILE_AGE_MS
+        for (dir in listOf(receivedDir(), camDir())) {
+            // Tệp đang ghi có thời gian sửa đổi mới nên không bị xoá giữa chừng
+            dir.listFiles()?.forEach { f ->
+                try { if (f.isFile && f.lastModified() < cutoff) f.delete() } catch (e: Exception) { }
+            }
+        }
+    }
+
     /** Gắn WebView ẩn (1x1, trong suốt) vào [parent] và bắt đầu kết nối. */
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     fun start(parent: FrameLayout) {
         if (web != null) return
+        purgeHandler.post(purgeTask)
         val w = WebView(act)
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
