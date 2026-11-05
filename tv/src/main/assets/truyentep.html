@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truyền tệp</title>
+<style>
+  :root{--bg1:#120a26;--bg2:#241545;--card:rgba(255,255,255,.07);--line:rgba(255,255,255,.12);--txt:#f3eefc;--mut:#a79bc4;--ac1:#8b2dff;--ac2:#c026ff;--ok:#3ddc84;--warn:#f5b942;--err:#ff6b6b;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;min-height:100%;color:var(--txt);font-family:Roboto,"Segoe UI",Arial,sans-serif;
+    background:radial-gradient(900px 500px at 85% -10%,#3a1d7a 0%,transparent 60%),linear-gradient(160deg,var(--bg2),var(--bg1));background-attachment:fixed;}
+  header{display:flex;align-items:center;gap:10px;padding:14px 16px;}
+  header .logo{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:linear-gradient(135deg,var(--ac1),var(--ac2));box-shadow:0 6px 18px rgba(139,45,255,.4);}
+  header b{font-size:18px;font-weight:700;letter-spacing:.2px;flex:1;}
+  button{padding:11px 18px;border-radius:999px;border:none;background:linear-gradient(135deg,var(--ac1),var(--ac2));color:#fff;font-size:14px;font-weight:600;font-family:inherit;box-shadow:0 6px 16px rgba(139,45,255,.3);transition:transform .12s,opacity .12s;}
+  button:active{transform:scale(.96);opacity:.9;}
+  button.sec{background:rgba(255,255,255,.1);box-shadow:none;}
+  header #closeBtn{width:38px;height:38px;padding:0;font-size:16px;}
+  #slotList{padding:4px 16px 8px;max-width:520px;margin:0 auto;}
+  .row{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 12px 32px rgba(0,0,0,.28);}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12.5px;color:var(--mut);}
+  .dot{width:9px;height:9px;border-radius:50%;background:#7d7396;flex:none;}
+  .row.connected .dot{background:var(--warn);box-shadow:0 0 0 4px rgba(245,185,66,.18);}
+  .row.streaming .dot{background:var(--ok);box-shadow:0 0 0 4px rgba(61,220,132,.18);}
+  .row.lost .dot{background:var(--err);box-shadow:0 0 0 4px rgba(255,107,107,.18);}
+  .row.streaming .chip{color:#bff3d6;}
+  .codeWrap{display:flex;flex-direction:column;gap:12px;}
+  .codeWrap input{width:100%;padding:16px 12px;border-radius:16px;border:1.5px solid var(--line);background:rgba(8,4,20,.55);color:#fff;font-size:26px;font-weight:600;letter-spacing:10px;text-align:center;outline:none;font-family:inherit;}
+  .codeWrap input::placeholder{font-size:15px;letter-spacing:1px;font-weight:400;color:#7d7396;}
+  .codeWrap input:focus{border-color:var(--ac2);box-shadow:0 0 0 4px rgba(192,38,255,.18);}
+  .codeWrap button{width:100%;padding:14px;font-size:15px;}
+  .codeLabel{text-align:center;font-size:30px;font-weight:700;letter-spacing:10px;color:#e8d5ff;padding:6px 0 2px;}
+  .codeBar{display:flex;align-items:center;gap:10px;}
+  .codeBar .codeLabel{flex:1;}
+  .codeBar button{width:40px;height:40px;padding:0;font-size:15px;}
+  .sendBtn{width:100%;padding:15px;font-size:15px;}
+  #prog{display:none;max-width:520px;margin:12px auto 0;padding:0 16px;}
+  #prog.show{display:block;}
+  #prog .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;}
+  #prog .txt{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--mut);margin-bottom:8px;}
+  #prog .txt span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #prog .bar{height:8px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;}
+  #prog .bar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--ac1),var(--ac2));transition:width .15s;}
+  .hint{padding:14px 22px 24px;max-width:520px;margin:0 auto;font-size:12.5px;color:var(--mut);line-height:1.65;text-align:center;}
+  #toast{position:fixed;left:12px;right:12px;bottom:18px;padding:10px 14px;border-radius:12px;background:rgba(30,18,62,.96);border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.45);font-size:13px;display:none;z-index:20;text-align:center;}
+  #toast.show{display:block;}
+  #imgReview{position:fixed;inset:0;background:#0b0618;display:none;flex-direction:column;z-index:30;}
+  #imgReview.show{display:flex;}
+  #imgTop,#imgTools{display:flex;gap:8px;align-items:center;padding:10px;background:rgba(255,255,255,.05);}
+  #imgTop .sp{flex:1;}
+  #imgTop b{font-size:13px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #imgTools{justify-content:center;flex-wrap:wrap;}
+  #imgTools button{background:rgba(255,255,255,.1);box-shadow:none;}
+  #imgTools button.active{background:linear-gradient(135deg,#8b2dff,#c026ff);}
+  #imgStage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;}
+  #imgWrap{position:relative;line-height:0;}
+  #imgWrap canvas{position:absolute;left:0;top:0;width:100%;height:100%;}
+  #imgPrev{touch-action:none;}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">📂</span>
+  <b>Truyền tệp</b>
+  <button id="closeBtn" class="sec" aria-label="Đóng">✕</button>
+</header>
+<div id="slotList"></div>
+<div id="prog"><div class="box"><div class="txt"><span id="progName"></span><span id="progPct"></span></div><div class="bar"><i id="progFill"></i></div></div></div>
+<div class="hint">
+  Mở Truyền tệp trên điện thoại cần kết nối, lấy mã 6 số rồi nhập vào ô phía trên.<br>
+  Mã được nhớ cho lần sau. Khi đã kết nối, bấm <b>Gửi tệp</b> để chọn tệp gửi sang điện thoại;
+  tệp điện thoại gửi sang tự lưu vào <b>Tải xuống/TruyenTep</b>.
+</div>
+
+<div id="imgReview">
+  <div id="imgTop">
+    <b id="imgName"></b><span class="sp"></span>
+    <button id="imgUndo" class="sec" title="Hoàn tác thao tác vừa rồi">↩</button>
+    <button id="imgSaveDl" class="sec" title="Lưu bản này vào Tải xuống/TruyenTep">💾 Tải xuống</button>
+    <button id="imgClose" class="sec">✕</button>
+  </div>
+  <div id="imgStage"><div id="imgWrap"><canvas id="imgCv"></canvas><canvas id="imgPrev"></canvas></div></div>
+  <div id="imgTools">
+    <button id="tCrop">✂️ Cắt</button>
+    <button id="tRotate">🔄 Xoay</button>
+    <button id="tDraw">✏️ Vẽ</button>
+    <button id="tMark">🔲 Đánh dấu</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="vendor/firebase-compat.js"></script>
+<script>
+(function () {
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCPwMKElbsQLjOeSVddGAfjNiHnPHV9b1A",
+    authDomain: "qrremod.firebaseapp.com",
+    databaseURL: "https://qrremod-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "qrremod",
+    storageBucket: "qrremod.firebasestorage.app",
+    messagingSenderId: "949360436062",
+    appId: "1:949360436062:web:c9b5b5d47ee4f76fdce5cf"
+  };
+  var MAX_CAM_SLOTS = 1;
+  var CAM_SIGNAL_LOST_MS = 8000;
+  var CAM_HEARTBEAT_TIMEOUT_MS = 15000;
+  // ===== CHẾ ĐỘ CHỈ CÙNG MẠNG (LAN) =====
+  // true  : chỉ kết nối khi 2 máy cùng Wi-Fi / cùng hotspot. Không dùng STUN/TURN,
+  //         bỏ mọi đường đi qua Internet (vẫn dùng Firebase để 2 máy tìm thấy nhau).
+  // false : như bản cũ (STUN + TURN, kết nối được cả khi khác mạng).
+  var LAN_ONLY = true;
+  function isLanCandidate(cand) {
+    if (!LAN_ONLY) return true;
+    const m = /^(?:a=)?candidate:\S+\s+\d+\s+\S+\s+\d+\s+(\S+)\s+\d+\s+typ\s+(\w+)/i.exec(String(cand || '').trim());
+    if (!m) return false;
+    if (m[2].toLowerCase() !== 'host') return false;      // bỏ srflx / relay / prflx
+    const a = m[1].toLowerCase();
+    if (a.endsWith('.local')) return true;                  // địa chỉ mDNS của mạng nội bộ
+    if (a.indexOf(':') >= 0) {                              // IPv6: chỉ link-local (fe80::/10) và ULA (fc00::/7)
+      const s = a.split('%')[0];
+      return /^fe[89ab]/.test(s) || /^f[cd]/.test(s);
+    }
+    const p = a.split('.').map(Number);
+    if (p.length !== 4 || p.some(n => !(n >= 0 && n <= 255))) return false;
+    return p[0] === 10 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+           (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254);
+  }
+
+  var CAM_ICE_SERVERS = LAN_ONLY ? [] : [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ];
+
+  var A = window.AndroidCam || {};
+  function loadJson(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function saveJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  var DEF_REC = function () { return { startTime: null, stopTime: null }; };
+
+  var db = null;
+  try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.database(); } catch (e) { console.error(e); }
+
+  function makeCamSlot(i) {
+    return {
+      index: i, roomCode: null, viewerId: null, pc: null, fbViewerRef: null, fbGenRef: null,
+      fbHostGenListener: null, fbIceListener: null, fbOfferListener: null, generation: -1,
+      connected: false, signalLost: false, reconnecting: false, lastConnectedAt: 0,
+      signalLostTimer: null, reconnectTimer: null, disconnectGraceTimer: null, permissionError: false,
+      dataChannel: null, lastPingAt: 0, incomingTransfer: null
+    };
+  }
+  var camSlots = []; for (var q = 0; q < MAX_CAM_SLOTS; q++) camSlots.push(makeCamSlot(q));
+
+  // ---------- Giao dien ----------
+  var slotListEl = document.getElementById('slotList');
+
+  var toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.classList.remove('show'); }, 6000);
+  }
+
+  function updateKeepAwake() {
+    var on = camSlots.some(function (s) { return s.connected; });
+    try { if (A.keepAwake) A.keepAwake(on); } catch (e) {}
+  }
+
+  function renderCamSlotList() {
+    slotListEl.innerHTML = '';
+    camSlots.forEach(function (slot, i) {
+      var row = document.createElement('div');
+      row.className = 'row' + (slot.connected ? ' connected' : '') +
+        (slot.connected && !slot.signalLost && !slot.reconnecting ? ' streaming' : '') +
+        ((slot.signalLost || slot.reconnecting) ? ' lost' : '');
+      var top = document.createElement('div'); top.className = 'top';
+      var chip = document.createElement('span'); chip.className = 'chip';
+      var dot = document.createElement('span'); dot.className = 'dot';
+      var st = document.createElement('span');
+      st.textContent = slot.permissionError ? 'Lỗi quyền Firebase' :
+        (slot.signalLost || slot.reconnecting) ? 'Chờ kết nối lại...' :
+        slot.connected ? 'Đã kết nối' : slot.roomCode ? 'Đang kết nối...' : 'Chưa kết nối';
+      chip.appendChild(dot); chip.appendChild(st); top.appendChild(chip);
+      row.appendChild(top);
+
+      var wrap = document.createElement('div'); wrap.className = 'codeWrap';
+      if (!slot.roomCode) {
+        var input = document.createElement('input');
+        input.placeholder = 'Nhập mã 6 số'; input.maxLength = 6; input.inputMode = 'numeric';
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter') connectSlot(i, input.value.trim()); });
+        wrap.appendChild(input);
+        var btn = document.createElement('button'); btn.textContent = 'Kết nối';
+        btn.onclick = function () { connectSlot(i, input.value.trim()); };
+        wrap.appendChild(btn);
+      } else {
+        var bar = document.createElement('div'); bar.className = 'codeBar';
+        var lbl = document.createElement('span'); lbl.className = 'codeLabel'; lbl.textContent = slot.roomCode;
+        bar.appendChild(lbl);
+        var x = document.createElement('button'); x.className = 'sec'; x.textContent = '✕'; x.title = 'Ngắt kết nối';
+        x.onclick = function () { disconnectSlot(i); };
+        bar.appendChild(x);
+        wrap.appendChild(bar);
+      }
+      row.appendChild(wrap);
+
+      // Hien nut gui tep khi da co DataChannel.
+      if (slot.connected && slot.dataChannel) {
+        var sb = document.createElement('button'); sb.className = 'sendBtn'; sb.textContent = '📤  Gửi tệp sang điện thoại';
+        sb.onclick = function () { pickAndSend(i); };
+        row.appendChild(sb);
+      }
+      slotListEl.appendChild(row);
+    });
+  }
+  renderCamSlotList();
+
+  // ---------- Ket noi ----------
+  function connectSlot(i, code) {
+    if (!code || code.length < 4) { toast('Nhập mã 6 số của điện thoại'); return; }
+    if (!db) { toast('Firebase chưa sẵn sàng'); return; }
+    disconnectSlot(i, true, true);
+    var slot = camSlots[i];
+    slot.roomCode = code;
+    slot.viewerId = 'pc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    slot.permissionError = false;
+    renderCamSlotList();
+    var codes = loadJson('cam-room-codes', ['']).slice();
+    codes[i] = code; saveJson('cam-room-codes', codes);
+    _doConnect(i);
+  }
+
+  function _doConnect(i) {
+    var slot = camSlots[i];
+    if (!slot.roomCode) return;
+    if (slot.pc) {
+      slot.pc.onconnectionstatechange = null; slot.pc.onicecandidate = null; slot.pc.ontrack = null;
+      try { slot.pc.close(); } catch (e) {}
+      slot.pc = null;
+    }
+    if (slot.fbOfferListener && slot.fbGenRef) { slot.fbGenRef.child('offer').off('value', slot.fbOfferListener); slot.fbOfferListener = null; }
+    if (slot.fbIceListener && slot.fbGenRef) { slot.fbGenRef.child('iceCandidatesHost').off('value', slot.fbIceListener); slot.fbIceListener = null; }
+    slot.generation = -1;
+    if (slot.fbHostGenListener && slot.fbViewerRef) slot.fbViewerRef.child('hostGeneration').off('value', slot.fbHostGenListener);
+    slot.reconnecting = !!(slot.signalLost || slot.reconnecting);
+    slot.signalLost = false;
+    renderCamSlotList();
+
+    var pc = new RTCPeerConnection({ iceServers: CAM_ICE_SERVERS });
+    slot.pc = pc;
+
+    pc.ondatachannel = function (event) {
+      if (slot.pc !== pc) return;
+      var ch = event.channel; ch.binaryType = 'arraybuffer'; slot.dataChannel = ch;
+      renderCamSlotList();
+      ch.onmessage = function (e) {
+        if (slot.dataChannel !== ch) return;
+        if (typeof e.data === 'string') {
+          var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+          if (msg.type === 'ping') slot.lastPingAt = Date.now();
+          else if (msg.type === 'text-edit' && A.textEdit) { try { A.textEdit(msg.del | 0, typeof msg.ins === 'string' ? msg.ins : ''); } catch (er) {} }
+          else if (msg.type === 'remote' && A.remote) { try { A.remote(e.data); } catch (er) {} }
+          else if (msg.type === 'file-start') startIncoming(i, msg);
+          else if (msg.type === 'file-end') finishIncoming(i, msg.transferId);
+          else if (msg.type === 'file-cancel') cancelIncoming(i, msg.transferId, false);
+          return;
+        }
+        // Du lieu nhi phan = 1 doan cua tep dang nhan - gom thanh cum nho roi ghi thang xuong dia.
+        var t = slot.incomingTransfer;
+        if (!t || t.failed) return;
+        onIncomingChunk(i, t, e.data);
+      };
+    };
+
+
+    pc.onicecandidate = function (e) {
+      if (slot.pc !== pc) return;
+      if (!e.candidate || !slot.fbGenRef) return;
+      if (LAN_ONLY && !isLanCandidate(e.candidate.candidate)) return;
+      slot.fbGenRef.child('iceCandidatesCtrl').push({
+        sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex, candidate: e.candidate.candidate
+      });
+    };
+
+    pc.onconnectionstatechange = function () {
+      if (slot.pc !== pc) return;
+      var s = pc.connectionState;
+      if (s === 'connected') {
+        clearTimeout(slot.disconnectGraceTimer);
+        slot.reconnecting = false; slot.connected = true; slot.signalLost = false;
+        slot.lastConnectedAt = Date.now(); slot.lastPingAt = Date.now();
+        clearTimeout(slot.signalLostTimer);
+        renderCamSlotList(); updateKeepAwake();
+        _startSignalLostCheck(i);
+      } else if (s === 'failed') {
+        clearTimeout(slot.disconnectGraceTimer);
+        _onSlotLostSignal(i);
+      } else if (s === 'disconnected') {
+        clearTimeout(slot.disconnectGraceTimer);
+        slot.reconnecting = true;
+        renderCamSlotList();
+        slot.disconnectGraceTimer = setTimeout(function () {
+          if (slot.pc !== pc) return;
+          if (pc.connectionState !== 'connected') _onSlotLostSignal(i);
+        }, 8000);
+      }
+    };
+
+    var fbRoot = firebase.database().ref('rooms').child(slot.roomCode).child('viewers').child(slot.viewerId);
+    slot.fbViewerRef = fbRoot;
+    fbRoot.child('present').set(true);
+    fbRoot.child('present').onDisconnect().remove();
+
+    slot.fbHostGenListener = fbRoot.child('hostGeneration').on('value', function (snap) {
+      var gen = snap.val();
+      if (!gen || gen === slot.generation) return;
+      if (slot.generation !== -1 && slot.pc && slot.pc.remoteDescription) { _doConnect(i); return; }
+      slot.generation = gen;
+      _resubscribeGen(i, gen);
+    }, function (err) {
+      console.error('Truyentep hostGeneration permission error', err);
+      slot.permissionError = true; renderCamSlotList();
+      toast('⚠️ Firebase từ chối quyền đọc/ghi (kiểm tra Database Rules)');
+    });
+  }
+
+  function _resubscribeGen(i, gen) {
+    var slot = camSlots[i];
+    if (slot.fbOfferListener && slot.fbGenRef) slot.fbGenRef.child('offer').off('value', slot.fbOfferListener);
+    if (slot.fbIceListener && slot.fbGenRef) slot.fbGenRef.child('iceCandidatesHost').off('value', slot.fbIceListener);
+    slot.fbGenRef = slot.fbViewerRef.child('gen').child(String(gen));
+
+    slot.fbOfferListener = slot.fbGenRef.child('offer').on('value', async function (snap) {
+      var val = snap.val();
+      if (!val || !val.sdp) return;
+      try {
+        await slot.pc.setRemoteDescription({ type: 'offer', sdp: val.sdp });
+        var answer = await slot.pc.createAnswer();
+        await slot.pc.setLocalDescription(answer);
+        slot.fbGenRef.child('answer').set({ type: 'answer', sdp: answer.sdp });
+      } catch (e) { console.error('Truyentep offer error', e); }
+    }, function (err) { slot.permissionError = true; renderCamSlotList(); });
+
+    slot.fbIceListener = slot.fbGenRef.child('iceCandidatesHost').on('value', function (snap) {
+      snap.forEach(function (child) {
+        var c = child.val(); if (!c) return;
+        if (LAN_ONLY && !isLanCandidate(c.candidate)) return;
+        slot.pc.addIceCandidate({ sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex, candidate: c.candidate }).catch(function () {});
+      });
+    }, function (err) { slot.permissionError = true; renderCamSlotList(); });
+  }
+
+  function _onSlotLostSignal(i) {
+    var slot = camSlots[i];
+    if (!slot.roomCode) return;
+    if (slot.incomingTransfer) cancelIncoming(i, slot.incomingTransfer.transferId, false, true);
+    slot.connected = false; slot.signalLost = true;
+    renderCamSlotList(); updateKeepAwake();
+    clearTimeout(slot.reconnectTimer);
+    slot.reconnectTimer = setTimeout(function () {
+      if (!slot.roomCode) return;
+      _doConnect(i);
+      setTimeout(function () {
+        if (slot.roomCode && !slot.connected && !(slot.pc && slot.pc.connectionState === 'connecting')) _onSlotLostSignal(i);
+      }, 20000);
+    }, 4000);
+  }
+
+  function _startSignalLostCheck(i) {
+    var slot = camSlots[i];
+    clearTimeout(slot.signalLostTimer);
+    slot.signalLostTimer = setTimeout(function () {
+      if (!slot.connected) return;
+      var lost = false;
+      if (slot.dataChannel) {
+        if (slot.dataChannel.readyState === 'closed' || slot.dataChannel.readyState === 'closing') lost = true;
+        else if (slot.lastPingAt && Date.now() - slot.lastPingAt > CAM_HEARTBEAT_TIMEOUT_MS) lost = true;
+      }
+      if (lost) { _onSlotLostSignal(i); return; }
+      _startSignalLostCheck(i);
+    }, CAM_SIGNAL_LOST_MS);
+  }
+
+  function disconnectSlot(i, silent, keepSavedCode) {
+    var slot = camSlots[i];
+    clearTimeout(slot.reconnectTimer); clearTimeout(slot.disconnectGraceTimer);
+    clearTimeout(slot.signalLostTimer);
+    slot.reconnecting = false;
+    if (slot.incomingTransfer) cancelIncoming(i, slot.incomingTransfer.transferId, true, true);
+    slot.dataChannel = null;
+    if (slot.fbOfferListener && slot.fbGenRef) slot.fbGenRef.child('offer').off('value', slot.fbOfferListener);
+    if (slot.fbIceListener && slot.fbGenRef) slot.fbGenRef.child('iceCandidatesHost').off('value', slot.fbIceListener);
+    if (slot.fbHostGenListener && slot.fbViewerRef) slot.fbViewerRef.child('hostGeneration').off('value', slot.fbHostGenListener);
+    if (slot.fbViewerRef) { slot.fbViewerRef.child('present').onDisconnect().cancel(); slot.fbViewerRef.remove().catch(function () {}); }
+    if (slot.pc) { try { slot.pc.close(); } catch (e) {} }
+    var fresh = makeCamSlot(i);
+    Object.keys(fresh).forEach(function (k) { slot[k] = fresh[k]; });
+    if (!keepSavedCode) {
+      var codes = loadJson('cam-room-codes', ['']).slice(); codes[i] = ''; saveJson('cam-room-codes', codes);
+    }
+    renderCamSlotList(); updateKeepAwake();
+    if (!silent) toast('Đã ngắt kết nối');
+  }
+
+  document.getElementById('closeBtn').onclick = function () { if (A.close) A.close(); };
+
+
+  // ---------- Gui / nhan tep qua DataChannel (giao thuc giong ban may tinh) ----------
+  // file-start (JSON) -> cac doan nhi phan -> file-end (JSON); file-cancel de huy.
+  // Nhan: ghi THANG xuong dia theo tung cum nho (khong gom ca tep vao RAM) -> gui duoc tep nhieu GB.
+  var FILE_CHUNK = 64 * 1024;
+  var WRITE_BATCH = 6 * FILE_CHUNK;            // ~384KB moi lan ghi xuong dia
+  var SEND_HIGH = 1024 * 1024;                 // ngung gui khi bo dem > 1MB
+  var KEEP_IMG_MAX = 25 * 1024 * 1024;         // chi giu anh <= 25MB trong RAM de mo trinh sua
+  function say(msg) {
+    if (A.toastMsg) { try { A.toastMsg(msg); return; } catch (e) {} }
+    toast(msg);
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function isImageFile(mime, name) {
+    return /^image\//.test(mime || '') || /\.(jpe?g|png|webp|gif|bmp)$/i.test(name || '');
+  }
+  function fmtSize(n) {
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    return Math.max(1, Math.round(n / 1024)) + ' KB';
+  }
+
+  // Thanh tien do (cap nhat truc tiep vao DOM, khong ve lai the ket noi).
+  var progEl = document.getElementById('prog'), progName = document.getElementById('progName'),
+      progPct = document.getElementById('progPct'), progFill = document.getElementById('progFill');
+  var progLast = 0, progHideTimer = null;
+  function showProgress(label, done, total, force) {
+    var now = Date.now();
+    if (!force && now - progLast < 200) return;
+    progLast = now;
+    clearTimeout(progHideTimer);
+    var f = total > 0 ? Math.min(1, done / total) : 0;
+    progName.textContent = label;
+    progPct.textContent = Math.floor(f * 100) + '% · ' + fmtSize(done) + ' / ' + fmtSize(total);
+    progFill.style.width = (f * 100) + '%';
+    progEl.classList.add('show');
+  }
+  function hideProgress(delay) {
+    clearTimeout(progHideTimer);
+    progHideTimer = setTimeout(function () { progEl.classList.remove('show'); }, delay || 0);
+  }
+
+  function _b64FromBytes(bytes) {
+    var binary = '', step = 0x8000;
+    for (var k = 0; k < bytes.length; k += step) binary += String.fromCharCode.apply(null, bytes.subarray(k, k + step));
+    return btoa(binary);
+  }
+
+  function startIncoming(i, msg) {
+    var slot = camSlots[i];
+    if (slot.incomingTransfer) cancelIncoming(i, slot.incomingTransfer.transferId, true);
+    var name = String(msg.name || ('tep_' + Date.now()));
+    var info = null;
+    try { info = A.startReceived ? JSON.parse(A.startReceived(name)) : null; } catch (e) { info = null; }
+    if (!info || !info.id) { say('⚠️ Không tạo được tệp để nhận "' + name + '"'); slot.incomingTransfer = { transferId: msg.transferId, failed: true }; return; }
+    var mime = msg.mimeType || 'application/octet-stream', size = msg.size || 0;
+    slot.incomingTransfer = {
+      transferId: msg.transferId, name: name, mimeType: mime, size: size, written: 0, got: 0,
+      id: info.id, path: info.path, pend: [], pendBytes: 0,
+      keep: (isImageFile(mime, name) && size <= KEEP_IMG_MAX) ? [] : null
+    };
+    showProgress('📥 Đang nhận ' + name, 0, size, true);
+  }
+
+  function _flushIncoming(t) {
+    if (!t.pendBytes) return true;
+    var buf = new Uint8Array(t.pendBytes), off = 0;
+    for (var k = 0; k < t.pend.length; k++) { buf.set(new Uint8Array(t.pend[k]), off); off += t.pend[k].byteLength; }
+    t.pend = []; t.pendBytes = 0;
+    var ok = false;
+    try { ok = !!A.appendChunk(t.id, _b64FromBytes(buf)); } catch (e) { ok = false; }
+    if (ok) t.written += buf.length;
+    return ok;
+  }
+
+  function onIncomingChunk(i, t, data) {
+    var len = data.byteLength || 0;
+    camSlots[i].lastPingAt = Date.now();   // dang co du lieu den = ket noi con song
+    t.got += len;
+    if (t.keep) t.keep.push(data);
+    t.pend.push(data); t.pendBytes += len;
+    if (t.pendBytes >= WRITE_BATCH) {
+      if (!_flushIncoming(t)) { failIncoming(i, t, '⚠️ Ghi tệp thất bại (có thể hết dung lượng)'); return; }
+    }
+    showProgress('📥 Đang nhận ' + t.name, t.got, t.size);
+  }
+
+  function _discard(t) {
+    try { if (A.discardReceived && t.id) A.discardReceived(t.id, t.path || ''); } catch (e) {}
+  }
+
+  function failIncoming(i, t, msg) {
+    var slot = camSlots[i];
+    t.failed = true; t.pend = []; t.keep = null;
+    _discard(t);
+    if (slot.incomingTransfer === t) slot.incomingTransfer = { transferId: t.transferId, failed: true };
+    hideProgress(0); say(msg);
+    try { if (slot.dataChannel && slot.dataChannel.readyState === 'open') slot.dataChannel.send(JSON.stringify({ type: 'file-cancel', transferId: t.transferId })); } catch (e) {}
+  }
+
+  function cancelIncoming(i, transferId, silent, force) {
+    var slot = camSlots[i], t = slot.incomingTransfer;
+    if (!t || (!force && t.transferId !== transferId)) return;
+    slot.incomingTransfer = null;
+    if (!t.failed) { t.pend = []; t.keep = null; _discard(t); }
+    hideProgress(0);
+    if (!silent && !t.failed) say('❌ Đã hủy nhận tệp (mất kết nối giữa chừng)');
+  }
+
+  async function finishIncoming(i, transferId) {
+    var slot = camSlots[i], t = slot.incomingTransfer;
+    if (!t || t.transferId !== transferId) return;
+    slot.incomingTransfer = null;
+    if (t.failed) { hideProgress(0); return; }
+    var ok = _flushIncoming(t);
+    var fin = false; try { fin = !!A.finishFile(t.id); } catch (e) {}
+    if (!ok || !fin) { _discard(t); hideProgress(0); say('⚠️ Nhận tệp thất bại'); return; }
+    showProgress('📥 Đã nhận ' + t.name, t.size || t.got, t.size || t.got, true);
+    var keep = t.keep; t.keep = null;
+    if (keep) {
+      var blob = new Blob(keep, { type: t.mimeType });
+      openImageReview(blob, t.path, t.name);
+      try { if (A.showOverlay) A.showOverlay(); } catch (e) {}
+    }
+    // Chep sang Tai xuong/TruyenTep chay ngam (tep lon khong lam treo giao dien); ket qua ve qua window.__published.
+    var started = false;
+    try { started = A.publishDownloadAsync ? !!A.publishDownloadAsync(t.path, t.mimeType, t.name) : false; } catch (e) {}
+    if (!started) { say('📥 Đã nhận: ' + t.name); hideProgress(1500); }
+    else showProgress('📂 Đang chép "' + t.name + '" vào Tải xuống...', 1, 1, true);
+  }
+
+  window.__published = function (name, ok) {
+    hideProgress(800);
+    say(ok ? ('📥 Đã nhận: ' + name + ' (đã lưu vào Tải xuống/TruyenTep)') : ('📥 Đã nhận: ' + name + ' (không chép được vào Tải xuống)'));
+  };
+
+  function pickAndSend(i) {
+    var slot = camSlots[i];
+    if (!slot.connected || !slot.dataChannel || slot.dataChannel.readyState !== 'open') { toast('Chưa kết nối với điện thoại'); return; }
+    var input = document.createElement('input');
+    input.type = 'file'; input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = function () {
+      var f = input.files && input.files[0];
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (f) sendFileToPhone(i, f);
+    };
+    input.click();
+  }
+
+  // Cho den khi bo dem gui xuong thap (su kien bufferedamountlow), co timeout du phong.
+  function waitDrain(ch) {
+    return new Promise(function (resolve) {
+      var done = false;
+      function fin() { if (done) return; done = true; ch.onbufferedamountlow = null; clearTimeout(tm); resolve(); }
+      var tm = setTimeout(fin, 200);
+      ch.onbufferedamountlow = fin;
+    });
+  }
+
+  async function sendFileToPhone(i, file) {
+    var slot = camSlots[i], ch = slot.dataChannel;
+    if (!ch || ch.readyState !== 'open') { say('Mất kết nối, không gửi được tệp'); return; }
+    var id = 'out_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    var total = Math.max(1, Math.ceil(file.size / FILE_CHUNK));
+    try { ch.bufferedAmountLowThreshold = 256 * 1024; } catch (e) {}
+    showProgress('📤 Đang gửi ' + file.name, 0, file.size, true);
+    try {
+      ch.send(JSON.stringify({ type: 'file-start', transferId: id, name: file.name,
+        mimeType: file.type || 'application/octet-stream', size: file.size, totalChunks: total }));
+      for (var off = 0; off < file.size; off += FILE_CHUNK) {
+        if (slot.dataChannel !== ch || ch.readyState !== 'open') { hideProgress(0); say('❌ Mất kết nối giữa chừng khi đang gửi "' + file.name + '"'); return; }
+        while (ch.bufferedAmount > SEND_HIGH) {
+          await waitDrain(ch);
+          if (slot.dataChannel !== ch || ch.readyState !== 'open') { hideProgress(0); say('❌ Mất kết nối giữa chừng khi đang gửi "' + file.name + '"'); return; }
+        }
+        var buf = await file.slice(off, off + FILE_CHUNK).arrayBuffer();
+        ch.send(buf);
+        showProgress('📤 Đang gửi ' + file.name, Math.min(file.size, off + FILE_CHUNK), file.size);
+      }
+      // Cho bo dem gui het roi moi bao xong.
+      while (ch.bufferedAmount > 0 && ch.readyState === 'open') await sleep(50);
+      ch.send(JSON.stringify({ type: 'file-end', transferId: id }));
+      showProgress('📤 Đã gửi ' + file.name, file.size, file.size, true); hideProgress(1500);
+      say('✓ Đã gửi "' + file.name + '" sang điện thoại');
+    } catch (err) {
+      hideProgress(0);
+      say('❌ Gửi tệp thất bại: ' + ((err && err.message) || err));
+      try { ch.send(JSON.stringify({ type: 'file-cancel', transferId: id })); } catch (e2) {}
+    }
+  }
+
+  // ---------- Xem / sua anh nhan tu dien thoai (cat, xoay, ve, danh dau) ----------
+  // Canvas la be mat chinh; moi lan sua xong tu luu de lai vao dung tep da nhan.
+  var imgEl = document.getElementById('imgReview');
+  var cv = document.getElementById('imgCv'), pv = document.getElementById('imgPrev');
+  var cx = cv.getContext('2d'), pcx = pv.getContext('2d');
+  var imgWrap = document.getElementById('imgWrap'), imgStage = document.getElementById('imgStage');
+  var imgState = { path: null, name: '', tool: null, start: null, drawing: false, undo: null };
+  var toolBtns = { crop: document.getElementById('tCrop'), draw: document.getElementById('tDraw'), mark: document.getElementById('tMark') };
+
+  function fitCanvas() {
+    if (!cv.width || !cv.height) return;
+    var sw = imgStage.clientWidth - 12, sh = imgStage.clientHeight - 12;
+    if (sw <= 0 || sh <= 0) return;
+    var k = Math.min(sw / cv.width, sh / cv.height);
+    imgWrap.style.width = Math.max(1, Math.floor(cv.width * k)) + 'px';
+    imgWrap.style.height = Math.max(1, Math.floor(cv.height * k)) + 'px';
+  }
+  window.addEventListener('resize', fitCanvas);
+
+  function setTool(t) {
+    imgState.tool = t; imgState.start = null; imgState.drawing = false;
+    Object.keys(toolBtns).forEach(function (k) { toolBtns[k].classList.toggle('active', k === t); });
+    pcx.clearRect(0, 0, pv.width, pv.height);
+  }
+  function syncPrev() { pv.width = cv.width; pv.height = cv.height; fitCanvas(); }
+  function snapshot() {
+    var u = document.createElement('canvas'); u.width = cv.width; u.height = cv.height;
+    u.getContext('2d').drawImage(cv, 0, 0); imgState.undo = u;
+  }
+
+  function openImageReview(blob, path, name) {
+    var url = URL.createObjectURL(blob), im = new Image();
+    im.onload = function () {
+      cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+      cx.drawImage(im, 0, 0); URL.revokeObjectURL(url);
+      imgState.path = path; imgState.name = name; imgState.undo = null;
+      document.getElementById('imgName').textContent = name;
+      imgEl.classList.add('show'); syncPrev(); setTool(null);
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); say('⚠️ Không mở được ảnh để xem: ' + name); };
+    im.src = url;
+  }
+  function closeImageReview() { imgEl.classList.remove('show'); setTool(null); imgState.path = null; imgState.undo = null; }
+
+  function saveEdited() {
+    if (!imgState.path || !A.saveEdited) return;
+    var m = /\.([A-Za-z0-9]+)$/.exec(imgState.path), ext = m ? m[1].toLowerCase() : '';
+    var mime = 'image/jpeg', newExt = '';
+    if (ext === 'png') mime = 'image/png';
+    else if (ext === 'webp') mime = 'image/webp';
+    else if (ext !== 'jpg' && ext !== 'jpeg') newExt = 'jpg';
+    var url = cv.toDataURL(mime, 0.92), res = '';
+    try { res = A.saveEdited(imgState.path, url.slice(url.indexOf(',') + 1), newExt); } catch (e) { res = ''; }
+    if (!res) say('⚠️ Lưu chỉnh sửa ảnh thất bại'); else imgState.path = res;
+  }
+
+  function canvasPoint(e) {
+    var r = pv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height };
+  }
+  function lw(div, min) { return Math.max(min, cv.width / div); }
+
+  document.getElementById('imgClose').onclick = closeImageReview;
+  toolBtns.crop.onclick = function () { setTool(imgState.tool === 'crop' ? null : 'crop'); };
+  toolBtns.draw.onclick = function () { setTool(imgState.tool === 'draw' ? null : 'draw'); };
+  toolBtns.mark.onclick = function () { setTool(imgState.tool === 'mark' ? null : 'mark'); };
+  document.getElementById('tRotate').onclick = function () {
+    snapshot();
+    var w = cv.width, h = cv.height, r = document.createElement('canvas');
+    r.width = h; r.height = w;
+    var rc = r.getContext('2d'); rc.translate(h / 2, w / 2); rc.rotate(Math.PI / 2); rc.drawImage(cv, -w / 2, -h / 2);
+    cv.width = h; cv.height = w; cx.drawImage(r, 0, 0);
+    syncPrev(); saveEdited();
+  };
+  document.getElementById('imgUndo').onclick = function () {
+    var u = imgState.undo; if (!u) { toast('Chưa có thao tác để hoàn tác'); return; }
+    cv.width = u.width; cv.height = u.height; cx.drawImage(u, 0, 0);
+    imgState.undo = null; syncPrev(); saveEdited();
+  };
+  document.getElementById('imgSaveDl').onclick = function () {
+    if (!imgState.path || !A.publishDownload) return;
+    var ok = false; try { ok = A.publishDownload(imgState.path, ''); } catch (e) {}
+    say(ok ? '💾 Đã lưu bản này vào Tải xuống/TruyenTep' : '⚠️ Không lưu được vào Tải xuống');
+  };
+
+  pv.addEventListener('pointerdown', function (e) {
+    var t = imgState.tool; if (!t) return;
+    e.preventDefault(); try { pv.setPointerCapture(e.pointerId); } catch (er) {}
+    var p = canvasPoint(e);
+    if (t === 'draw') {
+      snapshot(); imgState.drawing = true;
+      cx.strokeStyle = '#ff3b30'; cx.lineWidth = lw(200, 3); cx.lineCap = 'round'; cx.lineJoin = 'round';
+      cx.beginPath(); cx.moveTo(p.x, p.y); cx.lineTo(p.x, p.y); cx.stroke();
+    } else { imgState.start = p; }
+  });
+  pv.addEventListener('pointermove', function (e) {
+    var t = imgState.tool; if (!t) return;
+    var p = canvasPoint(e);
+    if (t === 'draw' && imgState.drawing) { cx.lineTo(p.x, p.y); cx.stroke(); return; }
+    var s = imgState.start; if (!s) return;
+    pcx.clearRect(0, 0, pv.width, pv.height); pcx.save();
+    if (t === 'crop') { pcx.strokeStyle = '#00e5ff'; pcx.lineWidth = lw(400, 2); pcx.setLineDash([8, 6]); pcx.strokeRect(s.x, s.y, p.x - s.x, p.y - s.y); }
+    else { pcx.strokeStyle = '#ffd400'; pcx.lineWidth = lw(150, 4); pcx.strokeRect(s.x, s.y, p.x - s.x, p.y - s.y); }
+    pcx.restore();
+  });
+  function endPointer(e) {
+    var t = imgState.tool; if (!t) return;
+    if (t === 'draw' && imgState.drawing) { imgState.drawing = false; saveEdited(); return; }
+    var s = imgState.start; if (!s) return;
+    var p = canvasPoint(e); imgState.start = null;
+    pcx.clearRect(0, 0, pv.width, pv.height);
+    var x = Math.max(0, Math.min(s.x, p.x)), y = Math.max(0, Math.min(s.y, p.y));
+    var w = Math.min(cv.width - x, Math.abs(p.x - s.x)), h = Math.min(cv.height - y, Math.abs(p.y - s.y));
+    if (w < 10 || h < 10) return;
+    snapshot();
+    if (t === 'crop') {
+      var c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
+      c.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, c.width, c.height);
+      cv.width = c.width; cv.height = c.height; cx.drawImage(c, 0, 0); syncPrev();
+    } else {
+      cx.save(); cx.strokeStyle = '#ffd400'; cx.lineWidth = lw(150, 4);
+      cx.strokeRect(x, y, w, h); cx.restore();
+    }
+    setTool(null); saveEdited();
+  }
+  pv.addEventListener('pointerup', endPointer);
+  pv.addEventListener('pointercancel', function () { imgState.start = null; imgState.drawing = false; pcx.clearRect(0, 0, pv.width, pv.height); });
+
+  // Nut Back cua Android: dong trinh sua anh / xem truc tiep truoc, tra true neu da xu ly.
+  window.__camBack = function () {
+    if (imgEl.classList.contains('show')) { closeImageReview(); return true; }
+    return false;
+  };
+
+  // Tu ket noi lai cac ma da luu khi trang duoc mo
+  var saved = ['123456'];   // mã cố định (chạy ngầm)
+  saved.forEach(function (code, i) { code = (code || '').trim(); if (code && i < MAX_CAM_SLOTS) connectSlot(i, code); });
+})();
+</script>
+</body>
+</html>

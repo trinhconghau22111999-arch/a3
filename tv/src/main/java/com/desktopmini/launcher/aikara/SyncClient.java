@@ -1,4 +1,4 @@
-package com.screencast.tv;
+package com.desktopmini.launcher.aikara;
 
 import android.os.Handler;
 import android.webkit.WebView;
@@ -19,12 +19,24 @@ import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Phía TV của đồng bộ: giữ kết nối TCP tới điện thoại (cổng 8093), làm theo lệnh
- * load / pause / start trên trình phát YouTube của TV, và gửi trạng thái về điện thoại.
- * Đo độ lệch đồng hồ bằng ping/pong (giống NTP), lấy lần có độ trễ thấp nhất.
+ * load / pause / start / rate / seek trên trình phát YouTube của TV, và gửi trạng thái về điện thoại.
+ *
+ * Thay đổi so với bản trước:
+ *  - Độ lệch đồng hồ lấy từ mẫu có RTT nhỏ nhất trong 16 mẫu gần nhất (không thay kết quả tốt mỗi 20 giây).
+ *  - Heartbeat mỗi 2 giây. Im lặng quá 6 giây thì nối lại ngay, không đợi 2 giây như trước.
+ *  - Nhận lệnh "seek": điện thoại đã tạm dừng, TV tua tới đúng vị trí đó rồi dừng và chờ lệnh "start".
+ *    Lệnh "start" hẹn một mốc giờ chung để cả hai cùng phát.
+ *  - Tần suất chạy JavaScript ép toàn màn hình giảm từ 250 ms xuống 1 giây.
  */
 public class SyncClient {
-    private static final int PING_REFRESH_TICKS = 80; // 80 * 250 ms = 20 giây
     private static final int TICK_MS = 250;
+    private static final int ENFORCE_EVERY_TICKS = 4;     // 4 * 250 ms = 1 giây
+    private static final int HEARTBEAT_EVERY_TICKS = 8;   // 8 * 250 ms = 2 giây
+    private static final int DEAD_AFTER_MS = 6000;        // im lặng quá mức này thì coi là rớt
+    private static final int CONNECT_TIMEOUT_MS = 3000;
+    private static final int RETRY_MIN_MS = 300;
+    private static final int RETRY_MAX_MS = 2000;
+    private static final int CLOCK_SAMPLES = 16;
 
     private static final String STATE_JS =
             "(function(){var v=document.querySelector('video');" +
@@ -71,12 +83,20 @@ public class SyncClient {
     private final Runnable playRunnable;
 
     private volatile boolean running = false;
+    private volatile boolean connected = false;
     private volatile BufferedWriter out;
     private volatile Socket sock;
     private volatile long offsetMs = 0;   // điện thoại = TV + offsetMs
-    private long bestRtt = Long.MAX_VALUE; // chỉ dùng trong synchronized
-    private boolean hold = false;          // chỉ dùng trên luồng chính
-    private int ticks = 0;                 // chỉ dùng trên luồng chính
+
+    // Bộ lọc đồng hồ: giữ 16 mẫu gần nhất, dùng mẫu có độ trễ nhỏ nhất (chỉ dùng trong synchronized)
+    private final long[] sampleRtt = new long[CLOCK_SAMPLES];
+    private final long[] sampleOff = new long[CLOCK_SAMPLES];
+    private int sampleCount = 0;
+    private int sampleNext = 0;
+
+    private int retryMs = RETRY_MIN_MS;   // chỉ dùng trên luồng mạng
+    private boolean hold = false;         // chỉ dùng trên luồng chính
+    private int ticks = 0;                // chỉ dùng trên luồng chính
 
     public SyncClient(Handler ui, WebView web, String host, int port) {
         this.ui = ui;
@@ -88,8 +108,8 @@ public class SyncClient {
             public void run() {
                 if (!running) return;
                 ticks++;
-                if (ticks % PING_REFRESH_TICKS == 0) startPingBurst(5);
-                web.evaluateJavascript(ENFORCE_JS, null);
+                if (ticks % HEARTBEAT_EVERY_TICKS == 0) sendPing();
+                if (ticks % ENFORCE_EVERY_TICKS == 0) web.evaluateJavascript(ENFORCE_JS, null);
                 web.evaluateJavascript(STATE_JS, raw -> onState(parseJs(raw)));
                 ui.postDelayed(this, TICK_MS);
             }
@@ -110,13 +130,19 @@ public class SyncClient {
 
     public void stop() {
         running = false;
+        connected = false;
         ui.removeCallbacks(tickRunnable);
         ui.removeCallbacks(playRunnable);
         closeSocket();
         writer.shutdownNow();
     }
 
-    // ---- Luồng mạng: kết nối, tự nối lại sau 2 giây nếu rớt ----
+    /** true khi kết nối TCP tới điện thoại còn sống. Dùng để quyết định có ngắt khi mất tín hiệu tìm hay không. */
+    public boolean isConnected() {
+        return connected;
+    }
+
+    // ---- Luồng mạng: kết nối, nối lại ngay khi rớt (chờ tăng dần nếu không nối được) ----
 
     private void netLoop() {
         while (running) {
@@ -124,23 +150,28 @@ public class SyncClient {
                 connectOnce();
             } catch (Exception ignored) {
             }
+            connected = false;
             closeSocket();
             if (!running) break;
             try {
-                Thread.sleep(2000);
+                Thread.sleep(retryMs);
             } catch (InterruptedException e) {
                 break;
             }
+            retryMs = Math.min(RETRY_MAX_MS, retryMs * 2);
         }
     }
 
     private void connectOnce() throws Exception {
         Socket s = new Socket();
         sock = s;
-        s.connect(new InetSocketAddress(host, port), 3000);
+        s.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
         s.setTcpNoDelay(true);
+        s.setSoTimeout(DEAD_AFTER_MS);   // im lặng quá lâu thì readLine ném lỗi và nối lại ngay
         out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8));
-        startPingBurst(10);
+        connected = true;
+        retryMs = RETRY_MIN_MS;
+        for (int i = 0; i < 10; i++) sendPing();
 
         BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
         String line;
@@ -172,28 +203,33 @@ public class SyncClient {
 
     // ---- Đồng hồ ----
 
-    private synchronized void startPingBurst(int n) {
-        bestRtt = Long.MAX_VALUE;
-        for (int i = 0; i < n; i++) {
-            try {
-                JSONObject m = new JSONObject();
-                m.put("cmd", "ping");
-                m.put("c", System.currentTimeMillis());
-                send(m);
-            } catch (Exception ignored) {
-            }
+    private void sendPing() {
+        try {
+            JSONObject m = new JSONObject();
+            m.put("cmd", "ping");
+            m.put("c", System.currentTimeMillis());
+            send(m);
+        } catch (Exception ignored) {
         }
     }
 
+    // Lọc theo độ trễ nhỏ nhất: mẫu chậm (lúc mạng nghẽn) không thể thay mẫu tốt,
+    // nên không cần xoá kết quả cũ định kỳ.
     private synchronized void onPong(JSONObject m) {
         long t4 = System.currentTimeMillis();
         long c = m.optLong("c");
         long p = m.optLong("p");
         long rtt = t4 - c;
-        if (rtt >= 0 && rtt < bestRtt) {
-            bestRtt = rtt;
-            offsetMs = p - (c + rtt / 2);
+        if (rtt < 0) return;
+        sampleRtt[sampleNext] = rtt;
+        sampleOff[sampleNext] = p - (c + rtt / 2);
+        sampleNext = (sampleNext + 1) % CLOCK_SAMPLES;
+        if (sampleCount < CLOCK_SAMPLES) sampleCount++;
+        int best = 0;
+        for (int i = 1; i < sampleCount; i++) {
+            if (sampleRtt[i] < sampleRtt[best]) best = i;
         }
+        offsetMs = sampleOff[best];
     }
 
     // ---- Trạng thái gửi về điện thoại (gọi trên luồng chính) ----
@@ -243,10 +279,21 @@ public class SyncClient {
                 double pos = m.optDouble("pos", 0);
                 long atLocal = m.optLong("at") - offsetMs;
                 web.evaluateJavascript(
-                        "(function(){var v=document.querySelector('video');if(v){v.pause();v.currentTime=" + pos + ";}})()",
+                        "(function(){var v=document.querySelector('video');if(v){v.pause();if(Math.abs(v.currentTime-" + pos + ")>0.02)v.currentTime=" + pos + ";}})()",
                         null);
                 long delay = Math.max(0, atLocal - System.currentTimeMillis());
                 ui.postDelayed(playRunnable, delay);
+                break;
+            }
+            case "seek": {
+                // Điện thoại đã tạm dừng và chờ. TV tua tới đúng vị trí đó rồi dừng lại, không tự phát.
+                double pos = m.optDouble("pos", -1);
+                if (pos < 0 || Double.isNaN(pos)) break;
+                ui.removeCallbacks(playRunnable);
+                hold = true;
+                web.evaluateJavascript(
+                        "(function(){var v=document.querySelector('video');if(v){v.pause();if(Math.abs(v.currentTime-" + pos + ")>0.02)v.currentTime=" + pos + ";}})()",
+                        null);
                 break;
             }
             default:

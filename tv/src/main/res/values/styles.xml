@@ -1,0 +1,6 @@
+<resources>
+    <!-- Android 4.4 (API 19-20): chủ đề Holo không thanh tiêu đề; Android 5+ dùng values-v21 -->
+    <style name="AppTheme" parent="android:Theme.Holo.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

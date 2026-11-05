@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Biểu tượng cho Android 7.x (không có adaptive icon); Android 8+ dùng bản trong mipmap-anydpi-v26 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_bg" />
+    <item android:drawable="@drawable/ic_launcher_fg" />
+</layer-list>

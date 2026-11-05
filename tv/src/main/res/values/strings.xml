@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">tivi</string>
+    <string name="acc_desc">Cho điện thoại điều khiển các ứng dụng đang mở trên TV (chuột ảo, chạm, vuốt, Back). Dịch vụ chỉ nhận lệnh từ remote của bạn.</string>
+</resources>

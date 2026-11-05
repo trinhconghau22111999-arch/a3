@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chỉ cho phép kết nối https. Mã của app không gọi địa chỉ http nào; chỉ khi bạn tự mở trang http:// trong app "Duyệt web" (WebView) thì mới bị chặn.
+     Cần mở một địa chỉ http riêng (ví dụ máy chủ trong mạng nội bộ): thêm <domain-config cleartextTrafficPermitted="true"><domain>ten-may</domain></domain-config> vào đây. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

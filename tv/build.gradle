@@ -1,20 +1,40 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
-
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.multidex:multidex:2.0.1'
+}
 android {
-    namespace 'com.screencast.tv'
+    namespace 'com.desktopmini.launcher'
     compileSdk 34
-
     defaultConfig {
-        applicationId "com.screencast.tvreceiver2"
-        minSdk 21
+        applicationId 'com.desktopmini.tivi'
+        minSdk 19
+        multiDexEnabled true
         targetSdk 34
-        def buildVersionCode = (System.currentTimeMillis() / 1000L).toInteger()
-        versionCode buildVersionCode
-        versionName "1.0"
+        // Mỗi lần build trên GitHub Actions số phiên bản tự tăng (run_number) để cài đè được bản cũ
+        def run = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+        versionCode run
+        versionName "2.0.${run}"
+        // Chỉ giữ tài nguyên tiếng Việt + tiếng Anh của các thư viện (bỏ hàng chục ngôn ngữ không dùng) cho APK nhẹ hơn
+        resConfigs 'vi', 'en'
     }
-
+    signingConfigs {
+        release {
+            // Chữ ký cố định lấy từ GitHub Secrets; build máy khác không có thì dùng chữ ký debug
+            def ksPath = System.getenv('KEYSTORE_PATH')
+            if (ksPath && new File(ksPath).exists()) {
+                storeFile file(ksPath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+    // Keystore cố định của repo, dùng chung với app điện thoại và DK TV: mọi bản CI đều cùng chữ ký nên cài đè được
     signingConfigs {
         fixed {
             storeFile file("../keystore/ytbrowser-debug.keystore")
@@ -23,19 +43,24 @@ android {
             keyPassword "ytbrowser123"
         }
     }
-
     buildTypes {
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.fixed
-        }
         debug {
             signingConfig signingConfigs.fixed
         }
+        release {
+            signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.fixed
+            // R8: bỏ code/tài nguyên không dùng. Quy tắc giữ cầu JavaScript nằm trong proguard-rules.pro
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
     }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+    lint { abortOnError false; checkReleaseBuilds false }
+    // Các mảnh WebView (zip đã nén sẵn) trong assets/webview và APK app phụ trong assets/web: không nén lại để build nhanh và đọc nhanh
+        packaging {
+        jniLibs { useLegacyPackaging = true }
+        resources.excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*', 'META-INF/INDEX.LIST']
     }
 }
