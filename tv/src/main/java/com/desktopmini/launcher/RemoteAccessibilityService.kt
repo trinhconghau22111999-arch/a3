@@ -161,4 +161,7 @@ class RemoteAccessibilityService : AccessibilityService() {
     }
 
     fun goHome() { performGlobalAction(GLOBAL_ACTION_HOME) }
+
+    /** Khóa màn hình (tắt hình TV) bằng dịch vụ trợ năng, không cần quyền Quản trị thiết bị. Chỉ Android 9 trở lên. */
+    fun lockScreen(): Boolean = Build.VERSION.SDK_INT >= 28 && performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
 }

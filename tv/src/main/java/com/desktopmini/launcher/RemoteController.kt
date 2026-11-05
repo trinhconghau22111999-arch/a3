@@ -226,20 +226,15 @@ class RemoteController(
         act.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
     }
 
-    /** Tat man hinh that bang Device Admin lockNow(); chua cap quyen thi mo hop thoai xin quyen (xac nhan 1 lan tren TV). */
+    /** Tắt màn hình TV: ưu tiên Device Admin (lockNow), không có thì khóa bằng dịch vụ trợ năng (Android 9+),
+     *  cuối cùng mới giảm độ sáng xuống thấp nhất. */
     private fun lock() {
         val dpm = act.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val cn = ComponentName(act, AdminReceiver::class.java)
-        if (dpm.isAdminActive(cn)) {
-            dpm.lockNow()
-        } else {
-            Toast.makeText(act, "Cần cấp quyền Quản trị thiết bị để tắt màn hình - bấm Kích hoạt trên TV", Toast.LENGTH_LONG).show()
-            try {
-                act.startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                    .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, cn)
-                    .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Để điện thoại tắt màn hình TV từ xa"))
-            } catch (e: Exception) { }
-        }
+        if (dpm.isAdminActive(cn)) { dpm.lockNow(); return }
+        if (RemoteAccessibilityService.instance?.lockScreen() == true) return
+        setBrightness(0)
+        Toast.makeText(act, "TV này không tắt được hình (cần Android 9 trở lên). Đã giảm độ sáng tối thiểu.", Toast.LENGTH_LONG).show()
     }
 
     @Suppress("DEPRECATION")
