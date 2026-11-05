@@ -29,6 +29,8 @@ class SyncServer(private val onMessage: (JSONObject) -> Unit) {
     companion object {
         const val SYNC_PORT = 8093
         const val BEACON_PORT = 8091
+        // TV luôn gửi trạng thái 4 lần mỗi giây và ping mỗi 2 giây; im lặng quá lâu thì coi là rớt
+        const val TV_SILENCE_MS = 6000
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -75,6 +77,7 @@ class SyncServer(private val onMessage: (JSONObject) -> Unit) {
             while (running) {
                 val s = ss.accept()
                 s.tcpNoDelay = true
+                s.soTimeout = TV_SILENCE_MS
                 try { client?.close() } catch (e: Exception) { }
                 client = s
                 out = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
