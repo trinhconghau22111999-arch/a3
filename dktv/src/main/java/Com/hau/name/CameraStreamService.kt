@@ -1,0 +1,479 @@
+package Com.hau.name
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.ContentValues
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.Environment
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
+import android.provider.MediaStore
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import Com.hau.name.webrtc.PeerConnectionManager
+import Com.hau.name.webrtc.SignalingClient
+import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import org.webrtc.EglBase
+
+private const val TAG = "CameraStreamService"
+
+/** Số máy xem tối đa mà 1 camera phục vụ được cùng lúc. */
+const val MAX_VIEWERS_PER_CAMERA = 4
+
+/** Trạng thái kết nối riêng của từng máy xem đang được camera này phục vụ. */
+private class ViewerConn(val viewerId: String) {
+    var signalingClient: SignalingClient? = null
+    var peerConnectionManager: PeerConnectionManager? = null
+    var reconnectAttempt = 0
+    var removed = false
+    var reconnectRunnable: Runnable? = null
+}
+
+/**
+ * Foreground Service trên điện thoại (Máy Camera):
+ * 1. KHÔNG mở camera vật lý liên tục nữa (app này chỉ dùng để CHỤP & GỬI TỆP theo yêu cầu,
+ *    không phải webcam stream liên tục - việc stream liên tục đã có app máy tính/app stream
+ *    khác đảm nhiệm, không thuộc phạm vi app này). Tránh mở camera ở đây để không tranh chấp
+ *    phần cứng camera với CameraX bên PhotoCaptureActivity khi người dùng mở màn hình chụp ảnh.
+ * 2. Giữ 1 PARTIAL_WAKE_LOCK trong suốt vòng đời service -> CPU không ngủ (Doze) khi
+ *    người dùng tắt màn hình, kết nối vẫn sẵn sàng để gửi tệp/ảnh bất cứ lúc nào.
+ * 3. Theo dõi danh sách máy xem (rooms/{code}/viewers) trên Firebase — mỗi máy xem mới xuất
+ *    hiện sẽ được cấp 1 PeerConnection RIÊNG (chỉ có DataChannel để truyền tệp/ảnh, KHÔNG có
+ *    video track) để phục vụ độc lập, tối đa [MAX_VIEWERS_PER_CAMERA] máy cùng lúc.
+ * 4. KHÔNG có kênh nhận lệnh điều khiển nào từ máy tính — chỉ truyền tệp/ảnh 1 chiều theo yêu cầu.
+ * 5. Khi 1 máy xem mất kết nối, CHỈ kênh của máy đó tự kết nối lại (backoff) — không ảnh hưởng
+ *    các máy xem khác đang xem bình thường. Khi máy xem chủ động rời hẳn, slot của nó được
+ *    giải phóng cho máy xem khác.
+ */
+class CameraStreamService : Service() {
+
+    /** Lang nghe trang thai ket noi (so may xem dang ket noi thanh cong / toi da) de UI
+     *  (PhotoCaptureActivity) hien ro o goc tren-trai, cap nhat REAL-TIME moi khi co thay
+     *  doi (may xem moi ket noi xong, mat ket noi, roi han...) - khong can polling. */
+    interface ConnectionStatusListener {
+        fun onConnectionStatusChanged(connectedCount: Int, maxViewers: Int)
+    }
+    private val statusListeners = java.util.concurrent.CopyOnWriteArrayList<ConnectionStatusListener>()
+
+    /** Dang ky lang nghe - goi lai NGAY LAP TUC voi trang thai hien tai khi vua dang ky,
+     *  de UI khong bi "trang" cho toi khi co thay doi tiep theo. */
+    fun addConnectionStatusListener(listener: ConnectionStatusListener) {
+        statusListeners.add(listener)
+        listener.onConnectionStatusChanged(connectedViewerCount(), MAX_VIEWERS_PER_CAMERA)
+    }
+
+    fun removeConnectionStatusListener(listener: ConnectionStatusListener) {
+        statusListeners.remove(listener)
+    }
+
+    private fun connectedViewerCount(): Int =
+        viewerConns.values.count { it.peerConnectionManager != null && it.reconnectAttempt == 0 }
+
+    private fun notifyStatusListeners() {
+        val count = connectedViewerCount()
+        handler.post { statusListeners.forEach { it.onConnectionStatusChanged(count, MAX_VIEWERS_PER_CAMERA) } }
+    }
+
+    private val viewerConns = LinkedHashMap<String, ViewerConn>()
+    private var viewersListenerRef: DatabaseReference? = null
+    private var viewersChildListener: ChildEventListener? = null
+
+    private val eglBase: EglBase = EglBase.create()
+    private var peerFactory: org.webrtc.PeerConnectionFactory? = null
+    private var roomCode: String? = null
+    private var stopping = false
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /** true sau khi da tao xong PeerConnectionFactory + bat dau theo doi may xem lan dau -
+     *  thay cho kiem tra "videoSource == null" cu (khong con videoSource nua vi khong con
+     *  mo camera trong Service nay). */
+    private var viewersWatchStarted = false
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    /**
+     * Gui 1 lenh dieu khien (JSON da dung dinh dang {"type":"remote",...}) toi cac may
+     * TV dang ket noi. Chay tren luong goi (khong chay tren luong UI). @return so may nhan duoc.
+     */
+    fun sendRemoteCommand(json: String): Int {
+        var ok = 0
+        for (conn in viewerConns.values.toList()) {
+            val pcm = conn.peerConnectionManager ?: continue
+            if (pcm.sendJsonMessage(json)) ok++
+        }
+        return ok
+    }
+
+    /**
+     * Dừng chia sẻ NGAY LẬP TỨC, ĐỒNG BỘ (chạy trong cùng tiến trình - không qua hàng đợi
+     * Intent như trước) - dùng chung cho CẢ 3 đường dừng: nút "Kết thúc" trên notification
+     * (qua ACTION_STOP_SHARING), PhotoCaptureActivity.exitAppAndDisconnect() (gọi thẳng vào
+     * instance khi bấm Back để thoát hẳn app), và có thể gọi lại an toàn nhiều lần
+     * (sessionCleanedUp chặn dọn dẹp trùng). Gọi trực tiếp (không startService) để đảm bảo
+     * việc đóng PeerConnection + báo Firebase "ended" chắc chắn hoàn tất TRƯỚC KHI Activity
+     * gọi finishAffinity() - tránh trường hợp app bị đóng/kill trước khi Intent kịp xử lý.
+     */
+    fun stopSharingNow() {
+        stopping = true
+        cleanupSession()
+        markRoomEnded()
+        // Dọn cờ "đang chạy thật" dù dừng từ notification (không mở CameraActivity) — để
+        // lần sau mở lại app, UI không hiện nhầm là đang hoạt động.
+        getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+            .putBoolean(CameraActivity.KEY_SESSION_ACTIVE, false).apply()
+        stopSelf()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_SHARING) {
+            stopSharingNow()
+            return START_NOT_STICKY
+        }
+
+        roomCode = intent?.getStringExtra(EXTRA_ROOM_CODE) ?: roomCode
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIF_ID, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIF_ID, buildNotification())
+        }
+
+        // Thong bao hien 1 giay (co bieu tuong tren thanh trang thai) roi tu an: van nam trong man hinh keo xuong, khong bi xoa.
+        if (!notifQuiet) handler.postDelayed({ notifQuiet = true; updateNotification() }, 1000)
+
+        acquireWakeLock()
+
+        val code = roomCode
+        if (code != null && !viewersWatchStarted) {
+            startWatchingViewers(code)
+        } else if (code == null) {
+            Log.e(TAG, "Thiếu roomCode — không thể bắt đầu")
+            stopSelf()
+        }
+        return START_STICKY
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock != null) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomeCamera:CameraStreamService")
+        wakeLock?.setReferenceCounted(false)
+        wakeLock?.acquire()
+    }
+
+    /** Tao PeerConnectionFactory dung chung (neu chua co) roi bat dau theo doi may xem tren
+     *  Firebase - KHONG con mo camera vat ly lien tuc nua (xem ghi chu o dau class), tranh
+     *  tranh chap phan cung camera voi CameraX ben PhotoCaptureActivity khi mo man hinh chup
+     *  anh. */
+    private fun startWatchingViewers(code: String) {
+        viewersWatchStarted = true
+        peerFactory = peerFactory ?: PeerConnectionManager.createFactory(this, eglBase)
+
+        com.google.firebase.database.FirebaseDatabase.getInstance().reference
+            .child("rooms").child(code).child("consentGivenAt").setValue(System.currentTimeMillis())
+
+        watchViewers(code)
+    }
+
+    /**
+     * Theo dõi danh sách máy xem trên Firebase (rooms/{code}/viewers). Mỗi máy xem MỚI xuất
+     * hiện lần đầu (onChildAdded) được cấp 1 kênh kết nối riêng, tối đa [MAX_VIEWERS_PER_CAMERA].
+     * Máy xem rời hẳn (onChildRemoved — do chủ động ngắt) được dọn dẹp, giải phóng slot.
+     *
+     * DỌN "VIEWER MA": nếu máy xem bị tắt đột ngột (mất pin, force-close, rớt mạng vĩnh viễn),
+     * Firebase chỉ tự xoá field "present" (qua onDisconnect()) — KHÔNG xoá cả node viewerId,
+     * để lại dữ liệu rác (gen/, hostGeneration). Khi camera khởi động lại, Firebase bắn
+     * onChildAdded cho MỌI child hiện có, kể cả node rác này. Máy xem thật LUÔN ghi "present"
+     * TRƯỚC khi camera kịp thấy node được tạo (xem SignalingClient.start()), nên node nào
+     * KHÔNG có "present" chắc chắn là rác — xoá ngay, không cấp slot cho nó.
+     */
+    private fun watchViewers(code: String) {
+        val ref = FirebaseDatabase.getInstance().reference.child("rooms").child(code).child("viewers")
+        viewersListenerRef = ref
+        val listener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, prevKey: String?) {
+                val viewerId = snapshot.key ?: return
+                if (viewerConns.containsKey(viewerId)) return
+                if (!snapshot.hasChild("present")) {
+                    Log.d(TAG, "Dọn viewer rác (không có 'present'): $viewerId")
+                    snapshot.ref.removeValue()
+                    return
+                }
+                if (viewerConns.size >= MAX_VIEWERS_PER_CAMERA) {
+                    Log.w(TAG, "Đã đủ $MAX_VIEWERS_PER_CAMERA máy xem, bỏ qua máy xem mới: $viewerId")
+                    return
+                }
+                val conn = ViewerConn(viewerId)
+                conn.reconnectRunnable = Runnable { if (!conn.removed) connectViewer(code, conn) }
+                viewerConns[viewerId] = conn
+                connectViewer(code, conn)
+            }
+            override fun onChildRemoved(snapshot: DataSnapshot) {
+                val viewerId = snapshot.key ?: return
+                val conn = viewerConns.remove(viewerId) ?: return
+                conn.removed = true
+                conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
+                conn.peerConnectionManager?.release()
+                conn.signalingClient?.release()
+                Log.d(TAG, "Máy xem $viewerId đã rời hẳn, giải phóng slot")
+                updateNotification()
+            }
+            override fun onChildChanged(snapshot: DataSnapshot, prevKey: String?) {}
+            override fun onChildMoved(snapshot: DataSnapshot, prevKey: String?) {}
+            override fun onCancelled(error: DatabaseError) {
+                // Trước đây bỏ trống hoàn toàn - nếu Firebase Rules chặn quyền đọc (permission
+                // denied), camera sẽ KHÔNG BAO GIỜ thấy máy xem nào tới, dù máy xem đã kết nối
+                // thành công phía họ - và không có bất kỳ dấu vết nào để biết vì sao. Ghi log rõ
+                // ràng để dễ chẩn đoán qua Logcat/adb khi gặp lại tình trạng "máy tính báo đang
+                // kết nối mãi không xong".
+                Log.e(TAG, "Mất quyền đọc rooms/$code/viewers - kiểm tra lại Firebase Database Rules: " +
+                    "${error.code} ${error.message}")
+            }
+        }
+        viewersChildListener = listener
+        ref.addChildEventListener(listener)
+    }
+
+    /** Mở kênh WebRTC riêng cho 1 máy xem, gửi offer CHỈ với DataChannel để truyền tệp/ảnh -
+     *  KHÔNG kèm video track (xem ghi chú đầu class). */
+    private fun connectViewer(code: String, conn: ViewerConn) {
+        if (stopping || conn.removed) return
+        val factory = peerFactory ?: return
+
+        // Chi xu ly su kien cua DUNG kenh hien tai - su kien tre tu kenh CU (da release)
+        // khong duoc kich hoat reconnect lan nua, nhat la huy mat kenh MOI vua dung xong.
+        var sigRef: SignalingClient? = null
+        var pcmRef: PeerConnectionManager? = null
+        val sigClient = SignalingClient(
+            roomCode = code, viewerId = conn.viewerId, isHost = true,
+            listener = object : SignalingClient.Listener {
+                override fun onOfferReceived(sdp: String) {}
+                override fun onAnswerReceived(sdp: String) { conn.peerConnectionManager?.handleAnswer(sdp) }
+                override fun onIceCandidateReceived(sdpMid: String, sdpMLineIndex: Int, candidate: String) {
+                    conn.peerConnectionManager?.addIceCandidate(sdpMid, sdpMLineIndex, candidate)
+                }
+                override fun onRemoteDisconnected() {
+                    if (conn.signalingClient !== sigRef) return
+                    Log.d(TAG, "Máy xem ${conn.viewerId} mất kết nối tạm thời — sẽ tự nối lại")
+                    scheduleReconnectForViewer(code, conn)
+                }
+            }
+        )
+        sigRef = sigClient
+        conn.signalingClient = sigClient
+
+        val pcm = PeerConnectionManager(
+            factory = factory, isHost = true, signalingClient = sigClient, remoteSink = null,
+            onConnected = {
+                Log.d(TAG, "Đã kết nối với máy xem ${conn.viewerId}")
+                conn.reconnectAttempt = 0
+                conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
+                updateNotification()
+            },
+            onDisconnected = {
+                if (conn.peerConnectionManager === pcmRef) {
+                Log.d(TAG, "Mất kết nối WebRTC với máy xem ${conn.viewerId} — sẽ tự nối lại")
+                scheduleReconnectForViewer(code, conn)
+                }
+            },
+            onFileReceived = { name, mimeType, bytes ->
+                saveReceivedFileToDownloads(name, mimeType, bytes)
+            }
+        )
+        pcmRef = pcm
+        conn.peerConnectionManager = pcm
+        pcm.init()
+        pcm.startFileTransferOffer()
+        updateNotification()
+    }
+
+    /**
+     * Luu 1 tep nhan duoc TU MAY TINH (app Qrtuxa gui sang qua nut "Chon tep
+     * & gui" - xem PeerConnectionManager.onFileReceived) vao thu muc
+     * Download cong khai cua may - giong huong nguoc lai voi anh/tep dien
+     * thoai gui LEN may tinh, dung MediaStore theo dung cach Android khuyen
+     * dung tu API 29 tro len (khong can quyen WRITE_EXTERNAL_STORAGE), kem
+     * du phong ghi thang bang File API cho cac ban Android cu hon.
+     */
+    private fun saveReceivedFileToDownloads(name: String, mimeType: String, bytes: ByteArray) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/QrTruyenTep")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    Log.e(TAG, "saveReceivedFileToDownloads: khong tao duoc entry MediaStore")
+                    return
+                }
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = java.io.File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "QrTruyenTep"
+                )
+                if (!dir.exists()) dir.mkdirs()
+                java.io.File(dir, name).writeBytes(bytes)
+            }
+            Log.d(TAG, "Da luu tep nhan tu may tinh: $name (${bytes.size} bytes)")
+        } catch (e: Exception) {
+            Log.e(TAG, "saveReceivedFileToDownloads that bai: ${e.message}", e)
+        }
+    }
+
+    /** Backoff riêng cho từng máy xem — 1 máy rớt mạng không ảnh hưởng các máy khác. */
+    private fun scheduleReconnectForViewer(code: String, conn: ViewerConn) {
+        if (stopping || conn.removed) return
+        conn.peerConnectionManager?.release()
+        conn.peerConnectionManager = null
+        conn.signalingClient?.release()
+        conn.signalingClient = null
+
+        conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
+        val delay = minOf(
+            BASE_RECONNECT_DELAY_MS * (1 shl conn.reconnectAttempt.coerceAtMost(5)),
+            MAX_RECONNECT_DELAY_MS
+        )
+        conn.reconnectAttempt++
+        conn.reconnectRunnable?.let { handler.postDelayed(it, delay) }
+        updateNotification()
+    }
+
+    /** Chỉ đánh dấu phòng đã đóng — mã cố định KHÔNG bị xoá, giữ lại dùng cho lần sau.
+     *  Gọi từ CẢ 2 đường dừng camera (nút "Kết thúc" trên notification VÀ nút trong app) để
+     *  luôn dọn sạch danh sách máy xem trên Firebase như nhau, không để rác lại tuỳ đường dừng. */
+    private fun markRoomEnded() {
+        roomCode?.let { code ->
+            val roomRef = FirebaseDatabase.getInstance().reference.child("rooms").child(code)
+            roomRef.child("status").setValue("ended")
+            roomRef.child("viewers").removeValue()
+        }
+    }
+
+    /** true sau khi thong bao da hien 1 giay: chuyen sang kenh IMPORTANCE_MIN (khong con bieu tuong tren thanh trang thai). */
+    private var notifQuiet = false
+
+    private fun buildNotification(): android.app.Notification {
+        val channelId = if (notifQuiet) "home_camera_channel_quiet" else "home_camera_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(
+                NotificationChannel(channelId, getString(R.string.notif_channel_name),
+                    if (notifQuiet) NotificationManager.IMPORTANCE_MIN else NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 0,
+            Intent(this, CameraStreamService::class.java).apply { action = ACTION_STOP_SHARING },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val connectedCount = viewerConns.values.count { it.peerConnectionManager != null && it.reconnectAttempt == 0 }
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText("$connectedCount/$MAX_VIEWERS_PER_CAMERA máy đang xem. Chạm để kết thúc.")
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(if (notifQuiet) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Kết thúc", stopPendingIntent)
+            .build()
+    }
+
+    private fun updateNotification() {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIF_ID, buildNotification())
+        notifyStatusListeners()
+    }
+
+    /** Chặn dọn dẹp 2 lần (vd. onTaskRemoved gọi cleanupSession() rồi tự stopSelf() sẽ kích
+     *  hoạt tiếp onDestroy() gọi cleanupSession() lần nữa) — tránh giải phóng trùng eglBase/
+     *  wakeLock có thể gây crash. */
+    private var sessionCleanedUp = false
+
+    private fun cleanupSession() {
+        if (sessionCleanedUp) return
+        sessionCleanedUp = true
+        viewerConns.values.forEach { conn ->
+            conn.removed = true
+            conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
+            conn.peerConnectionManager?.release()
+            conn.signalingClient?.release()
+        }
+        viewerConns.clear()
+        viewersChildListener?.let { viewersListenerRef?.removeEventListener(it) }
+        viewersChildListener = null
+        viewersListenerRef = null
+
+        peerFactory?.dispose()
+        peerFactory = null
+        eglBase.release()
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        notifyStatusListeners()
+    }
+
+    /**
+     * Gọi khi người dùng THOÁT HẲN app khỏi danh sách Recents (vuốt app ra khỏi đa nhiệm) —
+     * KHÁC với bấm nút Back (chỉ đưa app xuống nền, webcam vẫn chạy tiếp, xem
+     * CameraActivity.onBackPressed). Theo yêu cầu "chỉ bật 1 lần, thoát hẳn app thì tự tắt,
+     * mở lại app thì tự bật lại": khi task bị dọn hẳn, tắt luôn webcam + dọn phòng trên Firebase,
+     * nhưng KHÔNG xoá mã cố định và KHÔNG xoá cờ "đã từng đồng ý" (CameraActivity.KEY_CONSENT_GIVEN)
+     * - nhờ vậy lần sau mở lại app sẽ tự động bật thẳng webcam mà không hiện lại màn giải thích.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopping = true
+        cleanupSession()
+        markRoomEnded()
+        getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+            .putBoolean(CameraActivity.KEY_SESSION_ACTIVE, false).apply()
+        instance = null
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        stopping = true
+        cleanupSession()
+        instance = null
+        super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_ROOM_CODE = "extra_room_code"
+        const val ACTION_STOP_SHARING = "action_stop_sharing"
+        private const val NOTIF_ID = 43
+
+        private const val BASE_RECONNECT_DELAY_MS = 2000L
+        private const val MAX_RECONNECT_DELAY_MS = 30_000L
+
+        /** Tham chieu toi service dang chay (null neu chua bat/da dung) - de
+         *  RemoteActivity dung de gui lenh. */
+        @Volatile var instance: CameraStreamService? = null
+            private set
+    }
+}

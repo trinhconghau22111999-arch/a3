@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Icon remote dieu khien TV (phong cach Sony): nen trang, than remote den vien mong, nut nguon cam,
+    vong dieu huong 4 mui ten + nut OK o giua, mic o duoi. Nam trong vung an toan 66dp cua Adaptive Icon.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Than remote -->
+    <path
+        android:fillColor="#17171A"
+        android:pathData="M49,24 L59,24 A9,9 0 0,1 68,33 L68,75 A9,9 0 0,1 59,84 L49,84 A9,9 0 0,1 40,75 L40,33 A9,9 0 0,1 49,24 Z" />
+
+    <!-- Nut nguon (cam) -->
+    <path
+        android:fillColor="#FF6B00"
+        android:pathData="M50,34 A4,4 0 1,0 58,34 A4,4 0 1,0 50,34 Z" />
+
+    <!-- Vong dieu huong -->
+    <path
+        android:fillColor="#26262B"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.2"
+        android:pathData="M42,54 A12,12 0 1,0 66,54 A12,12 0 1,0 42,54 Z" />
+
+    <!-- Nut OK -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M49.5,54 A4.5,4.5 0 1,0 58.5,54 A4.5,4.5 0 1,0 49.5,54 Z" />
+
+    <!-- 4 mui ten -->
+    <path android:fillColor="#FFFFFF" android:pathData="M54,44.8 L56.2,48 L51.8,48 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M54,63.2 L56.2,60 L51.8,60 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M44.8,54 L48,51.8 L48,56.2 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M63.2,54 L60,51.8 L60,56.2 Z" />
+
+    <!-- Mic -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M52,73 A2,2 0 0,1 56,73 L56,77 A2,2 0 0,1 52,77 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M49.5,76 A4.5,4.5 0 0,0 58.5,76" />
+</vector>

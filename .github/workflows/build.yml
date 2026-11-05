@@ -17,6 +17,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+      # Firebase cho app điều khiển TV (DK TV 2): secret GOOGLE_SERVICES_JSON_BASE64 phải có trong repo này
+      - name: Tạo google-services.json cho dktv
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GSJ" ]; then
+            echo "$GSJ" | base64 --decode > dktv/google-services.json
+            python3 - <<'PY'
+          import json
+          p = "dktv/google-services.json"
+          d = json.load(open(p))
+          for c in d.get("client", []):
+              c["client_info"]["android_client_info"]["package_name"] = "com.screencast.dktv2"
+          json.dump(d, open(p, "w"), indent=2)
+          PY
+          else
+            echo "::warning::Thiếu secret GOOGLE_SERVICES_JSON_BASE64 - DK TV 2 sẽ không kết nối được Firebase"
+          fi
+
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
@@ -27,14 +46,19 @@ jobs:
         with:
           name: TV-apk
           path: tv/build/outputs/apk/debug/tv-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DKTV-apk
+          path: dktv/build/outputs/apk/debug/dktv-debug.apk
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "Tải APK - Build #${{ github.run_number }}"
-          body: "app-debug.apk = cài trên điện thoại. tv-debug.apk = cài trên TV (tự tìm điện thoại, không cần gõ link)"
+          body: "app-debug.apk = cài trên điện thoại. tv-debug.apk = cài trên TV (tự tìm điện thoại, không cần gõ link). dktv-debug.apk = app điều khiển TV (DK TV 2)"
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             tv/build/outputs/apk/debug/tv-debug.apk
+            dktv/build/outputs/apk/debug/dktv-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

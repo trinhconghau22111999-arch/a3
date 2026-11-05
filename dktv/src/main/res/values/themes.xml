@@ -1,0 +1,19 @@
+<resources>
+    <!-- Giao diện kiểu Sony: nền tối, nhấn cam, thanh hệ thống đen -->
+    <style name="Theme.HomeCamera" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/sony_orange</item>
+        <item name="colorPrimaryVariant">@color/sony_orange</item>
+        <item name="colorOnPrimary">@color/sony_black</item>
+        <item name="colorSecondary">@color/sony_orange</item>
+        <item name="colorOnSecondary">@color/sony_black</item>
+        <item name="colorSurface">@color/sony_surface</item>
+        <item name="colorOnSurface">@color/sony_text</item>
+        <item name="android:colorBackground">@color/sony_black</item>
+        <item name="android:windowBackground">@color/sony_black</item>
+        <item name="android:statusBarColor">@color/sony_black</item>
+        <item name="android:navigationBarColor">@color/sony_black</item>
+        <item name="android:textColorPrimary">@color/sony_text</item>
+        <item name="android:textColorSecondary">@color/sony_text_dim</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Nền icon app: xanh dương đậm - gợi liên tưởng "công nghệ/tin cậy", phù hợp cho app
+         an ninh/giám sát gia đình. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+
+    <!-- Giao diện kiểu Sony (Alpha / Xperia): nền đen, chữ trắng, nhấn cam -->
+    <color name="sony_black">#000000</color>
+    <color name="sony_surface">#FFFFFF</color>
+    <color name="sony_orange">#FF6B00</color>
+    <color name="sony_text">#FFFFFF</color>
+    <color name="sony_text_dim">#A6A6AD</color>
+</resources>

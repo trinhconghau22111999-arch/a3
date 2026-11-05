@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Firebase (signaling WebRTC): chỉ bật khi workflow đã tạo dktv/google-services.json từ secret
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
+android {
+    namespace 'Com.hau.name'
+    compileSdk 34
+
+    defaultConfig {
+        // ID MỚI (khác com.hau.dktv của repo DK_TV) -> cài song song, không đè app cũ
+        applicationId "com.screencast.dktv2"
+        minSdk 24
+        targetSdk 34
+        def buildVersionCode = (System.currentTimeMillis() / 1000L).toInteger()
+        versionCode buildVersionCode
+        versionName "1.0"
+    }
+
+    // Dùng chung keystore cố định với app điện thoại và app TV
+    signingConfigs {
+        fixed {
+            storeFile file("../keystore/ytbrowser-debug.keystore")
+            storePassword "ytbrowser123"
+            keyAlias "ytbrowser"
+            keyPassword "ytbrowser123"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixed
+        }
+        debug {
+            signingConfig signingConfigs.fixed
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+
+    // Firebase - signaling WebRTC
+    implementation platform('com.google.firebase:firebase-bom:33.1.2')
+    implementation 'com.google.firebase:firebase-database-ktx'
+
+    // WebRTC
+    implementation 'io.github.webrtc-sdk:android:125.6422.06.1'
+}
