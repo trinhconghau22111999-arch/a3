@@ -15,6 +15,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -31,8 +33,7 @@ import java.util.concurrent.RejectedExecutionException;
 public class SyncClient {
     private static final int TICK_MS = 250;
     private static final int ENFORCE_EVERY_TICKS = 4;     // 4 * 250 ms = 1 giây
-    private static final int HEARTBEAT_EVERY_TICKS = 8;   // 8 * 250 ms = 2 giây
-    private static final int DEAD_AFTER_MS = 6000;        // im lặng quá mức này thì coi là rớt
+    private static final int DEAD_AFTER_MS = 15000;       // im lặng quá mức này thì coi là rớt (TV bận lúc tải trang thì vẫn không rớt oan)
     private static final int CONNECT_TIMEOUT_MS = 3000;
     private static final int RETRY_MIN_MS = 300;
     private static final int RETRY_MAX_MS = 2000;
@@ -79,6 +80,8 @@ public class SyncClient {
     private final String host;
     private final int port;
     private final ExecutorService writer = Executors.newSingleThreadExecutor();
+    // Nhịp "còn sống" chạy trên luồng riêng, không phụ thuộc luồng chính (luồng chính có thể bận khi WebView tải trang)
+    private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor();
     private final Runnable tickRunnable;
     private final Runnable playRunnable;
 
@@ -108,7 +111,6 @@ public class SyncClient {
             public void run() {
                 if (!running) return;
                 ticks++;
-                if (ticks % HEARTBEAT_EVERY_TICKS == 0) sendPing();
                 if (ticks % ENFORCE_EVERY_TICKS == 0) web.evaluateJavascript(ENFORCE_JS, null);
                 web.evaluateJavascript(STATE_JS, raw -> onState(parseJs(raw)));
                 ui.postDelayed(this, TICK_MS);
@@ -125,6 +127,7 @@ public class SyncClient {
         Thread t = new Thread(this::netLoop, "sync-client");
         t.setDaemon(true);
         t.start();
+        heartbeat.scheduleAtFixedRate(this::sendPing, 2, 2, TimeUnit.SECONDS);
         ui.post(tickRunnable);
     }
 
@@ -133,6 +136,7 @@ public class SyncClient {
         connected = false;
         ui.removeCallbacks(tickRunnable);
         ui.removeCallbacks(playRunnable);
+        heartbeat.shutdownNow();
         closeSocket();
         writer.shutdownNow();
     }

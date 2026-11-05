@@ -167,7 +167,8 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
 
         // 4) Đang trong bước bắt đầu phát chung thì bỏ qua để tránh xung đột
         if (now < cooldownUntil) return
-        if (!tvReady) return
+        // TV chưa sẵn sàng hoặc trạng thái đã cũ (mới nối lại, đang bận): chờ, không coi là TV tạm dừng
+        if (!tvReady || now - tvRecvAt > STALE_TV_MS) return
 
         // 5) Điện thoại tạm dừng (người dùng bấm) -> TV cũng dừng
         if (p.optBoolean("paused", true)) {
