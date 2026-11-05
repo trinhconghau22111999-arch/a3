@@ -922,9 +922,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Đang mở trang video (xem/shorts), kể cả lúc tạm dừng hoặc đệm để đồng bộ với TV.
+    // Chỉ dựa vào địa chỉ trang nên không bị mất khi video đang dừng.
+    private fun onVideoPage(): Boolean {
+        val u = try { webView.url } catch (e: Exception) { null } ?: return false
+        return u.contains("/watch") || u.contains("/shorts/")
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
-        if (isVideoPlaying && (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+        // Chỉ đổi độ trễ âm thanh trên điện thoại. Đồng bộ với TV dựa vào vị trí video (currentTime),
+        // không dựa vào âm thanh nên không bị ảnh hưởng.
+        if ((isVideoPlaying || onVideoPage()) && (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN)) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val step = if (code == KeyEvent.KEYCODE_VOLUME_UP) DELAY_STEP_MS else -DELAY_STEP_MS
                 val newMs = (audioDelayMs() + step).coerceIn(0, DELAY_MAX_MS)
