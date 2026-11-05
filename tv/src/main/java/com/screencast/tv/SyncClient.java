@@ -33,7 +33,8 @@ public class SyncClient {
             "if(ad){var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button');if(b)b.click();}" +
             "return JSON.stringify({url:location.href,t:v?v.currentTime:-1,paused:v?v.paused:true," +
             "ready:!!(v&&v.readyState>=3),ad:ad});})()";
-    // Luôn bật tiếng (chỉ im khi người dùng chỉnh âm lượng TV về 0) và tự phóng to video
+    // Khi YouTube báo đang tắt tiếng (hay gặp lúc vào video rồi lùi về video trước) thì tự bấm bật tiếng lại,
+    // không đụng tới âm lượng. Đồng thời tự phóng to video
     // khi đang ở trang xem (watch/shorts): video phủ kín màn hình, nền đen.
     private static final String ENFORCE_JS =
             "(function(){try{var v=document.querySelector('video');" +
@@ -48,10 +49,13 @@ public class SyncClient {
             "(document.head||document.documentElement).appendChild(s);}" +
             "var on=!!(v&&/^\\/(watch|shorts)/.test(location.pathname));" +
             "document.documentElement.classList.toggle('__tvfs',on);" +
-            "if(v){if(on){for(var e=v.parentElement;e&&e!==document.body;e=e.parentElement)e.classList.add('__tvfs_anc');}" +
-            "if(v.muted)v.muted=false;if(v.volume<1)v.volume=1;}" +
-            "if(p){if(p.isMuted&&p.isMuted()&&p.unMute)p.unMute();" +
-            "if(p.getVolume&&p.getVolume()<100&&p.setVolume)p.setVolume(100);}" +
+            "if(v&&on){for(var e=v.parentElement;e&&e!==document.body;e=e.parentElement)e.classList.add('__tvfs_anc');}" +
+            "var muted=!!((v&&v.muted)||(p&&p.isMuted&&p.isMuted()));" +
+            "if(muted){var q=document.querySelectorAll('[class*=unmute],[aria-label],[title]');" +
+            "for(var i=0;i<q.length;i++){var x=q[i];" +
+            "var t=((x.getAttribute('aria-label')||'')+' '+(x.getAttribute('title')||'')+' '+(typeof x.className==='string'?x.className:'')).toLowerCase();" +
+            "if(/unmute|bật tiếng|bật âm|bỏ tắt tiếng/.test(t)&&x.offsetParent!==null){x.click();break;}}" +
+            "if(p&&p.unMute&&p.isMuted&&p.isMuted())p.unMute();if(v&&v.muted)v.muted=false;}" +
             "}catch(e){}})()";
     private static final String PAUSE_JS =
             "(function(){var v=document.querySelector('video');if(v){v.pause();}})()";
