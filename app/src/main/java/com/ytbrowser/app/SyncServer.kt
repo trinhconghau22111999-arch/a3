@@ -29,8 +29,8 @@ class SyncServer(private val onMessage: (JSONObject) -> Unit) {
     companion object {
         const val SYNC_PORT = 8093
         const val BEACON_PORT = 8091
-        // TV ping mỗi 2 giây trên luồng riêng; im lặng quá 15 giây thì coi là rớt
-        const val TV_SILENCE_MS = 15000
+        // TV luôn gửi trạng thái 4 lần mỗi giây và ping mỗi 2 giây; im lặng quá lâu thì coi là rớt
+        const val TV_SILENCE_MS = 6000
     }
 
     private val main = Handler(Looper.getMainLooper())
