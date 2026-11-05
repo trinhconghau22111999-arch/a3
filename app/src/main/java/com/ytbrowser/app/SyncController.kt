@@ -23,7 +23,7 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
         private const val SEEK_LANDED_SEC = 0.05        // TV được coi là đã tua tới đúng chỗ khi sai dưới mức này
         private const val SEEK_GIVE_UP_MS = 3000L       // quá lâu mà TV chưa sẵn sàng thì phát chung luôn
         private const val WARMUP_MS = 3000L             // video mới: cả hai tạm dừng để đệm trước khi phát
-        private const val WARMUP_MAX_MS = 15000L        // TV chưa sẵn sàng quá lâu thì vẫn phát chung
+        private const val WARMUP_MAX_MS = 30000L        // chỉ là giới hạn an toàn nếu TV không tải được video
         private const val STALE_TV_MS = 1000L
         private val VID_REGEX = Regex("[?&]v=([A-Za-z0-9_-]{6,})")
 
@@ -150,6 +150,8 @@ class SyncController(private val web: WebView, private val server: SyncServer) {
 
         // 2b) Video mới: cả hai tạm dừng để đệm WARMUP_MS, rồi mới phát chung (không ngập ngừng lúc đầu)
         if (warming) {
+            // Điện thoại giữ tạm dừng cho tới khi TV đã tải xong đúng video này và đã đệm đủ WARMUP_MS.
+            // Không để điện thoại phát trước rồi kéo TV theo khi TV còn đang tải.
             web.evaluateJavascript(PAUSE_JS, null)
             val elapsed = now - warmStartedAt
             if ((elapsed >= WARMUP_MS && tvReady) || elapsed >= WARMUP_MAX_MS) {
