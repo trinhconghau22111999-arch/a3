@@ -763,17 +763,6 @@ class MainActivity : Activity(), FullscreenHost {
         return mode2 to words.subList(a, words.size).joinToString(" ")
     }
 
-    private fun ytOpenFirstVideo() {
-        val js = "(function(){var a=document.querySelector('a[href*=\"/watch?v=\"]');if(a){a.click();return 1}return 0})()"
-        fun tryOpen(n: Int) {
-            ui.postDelayed({
-                if (isFinishing || mode != 2) return@postDelayed
-                yt?.web?.evaluateJavascript(js) { r -> if (r != "1" && n < 4) tryOpen(n + 1) }
-            }, 3000)
-        }
-        tryOpen(0)
-    }
-
     private fun remoteVoice(q: String) {
         // Câu ghép: chuyển app + nói luôn tên bài / kênh trong một lần
         voiceSwitchAndQuery(q)?.let { (m, rest) ->
@@ -785,7 +774,6 @@ class MainActivity : Activity(), FullscreenHost {
             } else {
                 if (mode != 2) setMode(2)
                 yt?.search(rest)
-                ytOpenFirstVideo()
             }
             return
         }
@@ -797,7 +785,6 @@ class MainActivity : Activity(), FullscreenHost {
         }
         if (mode != 2) { hideFull(); setMode(2) }
         yt?.search(q)
-        ytOpenFirstVideo()
     }
 
     // Điện thoại gửi {del, ins}: xoá `del` ký tự trước con trỏ rồi chèn `ins` vào ô nhập đang chọn của TV/YouTube.
