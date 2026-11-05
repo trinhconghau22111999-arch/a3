@@ -52,10 +52,10 @@ import java.util.concurrent.TimeUnit;
 import fi.iki.elonen.NanoHTTPD;
 
 public class ScreenService extends Service {
-    public static final int PORT = 8080;
+    public static final int PORT = 8090;
     // TV tự tìm điện thoại: điện thoại phát thông báo UDP mỗi 2 giây + đăng ký dịch vụ mDNS (NSD)
-    public static final int BEACON_PORT = 8081;
-    public static final String NSD_TYPE = "_screencast._tcp.";
+    public static final int BEACON_PORT = 8091;
+    public static final String NSD_TYPE = "_screencast2._tcp.";
     public static volatile boolean running = false;
 
     // Đổi 2 số này nếu muốn nét hơn / mượt hơn
@@ -64,7 +64,7 @@ public class ScreenService extends Service {
     private static final int MAX_BITRATE = 8_000_000; // 8 Mbps
     private static final int MIN_BITRATE = 1_000_000; // 1 Mbps
 
-    private static final String CHANNEL = "screencast";
+    private static final String CHANNEL = "screencast2";
 
     private EglBase egl;
     private PeerConnectionFactory factory;

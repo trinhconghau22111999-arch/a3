@@ -18,7 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Phía TV của đồng bộ: giữ kết nối TCP tới điện thoại (cổng 8083), làm theo lệnh
+ * Phía TV của đồng bộ: giữ kết nối TCP tới điện thoại (cổng 8093), làm theo lệnh
  * load / pause / start trên trình phát YouTube của TV, và gửi trạng thái về điện thoại.
  * Đo độ lệch đồng hồ bằng ping/pong (giống NTP), lấy lần có độ trễ thấp nhất.
  */

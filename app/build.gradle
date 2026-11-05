@@ -8,7 +8,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.screencast.tubecast"
+        applicationId "com.screencast.tubecast2"
         minSdk 24
         targetSdk 34
         // versionCode tự tăng theo thời điểm build để cài đè được lên bản cũ

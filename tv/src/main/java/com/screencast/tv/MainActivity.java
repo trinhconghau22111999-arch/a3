@@ -30,8 +30,8 @@ import java.net.InetSocketAddress;
  * rồi mở thẳng trang nhận hình - không cần gõ đường link.
  */
 public class MainActivity extends Activity {
-    private static final int BEACON_PORT = 8081;
-    private static final String NSD_TYPE = "_screencast._tcp.";
+    private static final int BEACON_PORT = 8091;
+    private static final String NSD_TYPE = "_screencast2._tcp.";
     private static final long LOST_AFTER_MS = 15000;
 
     private final Handler ui = new Handler(Looper.getMainLooper());

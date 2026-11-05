@@ -20,15 +20,15 @@ import java.util.concurrent.Executors
 
 /**
  * Máy chủ đồng bộ trên điện thoại: phát beacon "SYNC1|ip|port" qua UDP để TV tự tìm,
- * mở cổng TCP 8083 để TV kết nối. Dữ liệu là các dòng JSON ngắn, mỗi dòng một lệnh.
+ * mở cổng TCP 8093 để TV kết nối. Dữ liệu là các dòng JSON ngắn, mỗi dòng một lệnh.
  * Lệnh "ping" được trả lời ngay tại đây để TV đo độ lệch đồng hồ; các lệnh khác chuyển
  * lên luồng chính qua onMessage.
  */
 class SyncServer(private val onMessage: (JSONObject) -> Unit) {
 
     companion object {
-        const val SYNC_PORT = 8083
-        const val BEACON_PORT = 8081
+        const val SYNC_PORT = 8093
+        const val BEACON_PORT = 8091
     }
 
     private val main = Handler(Looper.getMainLooper())

@@ -7,7 +7,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.screencast.tvreceiver"
+        applicationId "com.screencast.tvreceiver2"
         minSdk 21
         targetSdk 34
         def buildVersionCode = (System.currentTimeMillis() / 1000L).toInteger()
