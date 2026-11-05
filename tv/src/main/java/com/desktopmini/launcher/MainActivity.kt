@@ -45,7 +45,6 @@ private const val REQ_STORAGE = 3002
 private const val REQ_VOICE = 3003
 private const val REQ_VOICE_PERM = 3004
 private const val REQ_ROLE = 3005
-private const val REQ_ADMIN = 3006
 
 class MainActivity : Activity(), FullscreenHost {
     private lateinit var content: FrameLayout
@@ -115,48 +114,15 @@ class MainActivity : Activity(), FullscreenHost {
                 pickFile = { cb, params -> openFileChooser(cb, params) })
             transfer?.start(hidden)
         }, 2500)
-        ui.postDelayed({ maybeAskAdmin() }, 600)
+        ui.postDelayed({ nextAfterAdmin() }, 600)
     }
 
-    // ---------------- Quyền quản trị thiết bị (tắt màn hình từ xa) - hỏi TRƯỚC hộp thoại đặt mặc định ----------------
-
-    private fun adminComponent() = android.content.ComponentName(this, AdminReceiver::class.java)
-
-    private fun isAdminActive(): Boolean = try {
-        (getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager).isAdminActive(adminComponent())
-    } catch (e: Exception) { false }
-
+    // Không xin quyền Quản trị thiết bị. Chuyển sang bước hỏi dịch vụ trợ năng.
     private var adminChainDone = false
     private fun nextAfterAdmin() {
         if (adminChainDone) return
         adminChainDone = true
         ui.postDelayed({ maybeAskAccessibility() }, 300)
-    }
-
-    private fun maybeAskAdmin() {
-        if (isFinishing) return
-        val sp = getSharedPreferences("tv", MODE_PRIVATE)
-        if (isAdminActive() || sp.getBoolean("noAskAdmin", false)) { nextAfterAdmin(); return }
-        AlertDialog.Builder(this)
-            .setTitle("Cấp quyền Quản trị thiết bị?")
-            .setMessage("Để điện thoại tắt màn hình TV từ xa. Quyền này chỉ dùng để khóa/tắt màn hình, không xem hay xóa dữ liệu.")
-            .setPositiveButton("Cấp quyền") { _, _ -> requestAdmin() }
-            .setNegativeButton("Để sau") { _, _ -> nextAfterAdmin() }
-            .setNeutralButton("Không hỏi lại") { _, _ -> sp.edit().putBoolean("noAskAdmin", true).apply(); nextAfterAdmin() }
-            .setOnCancelListener { nextAfterAdmin() }
-            .show()
-    }
-
-    private fun requestAdmin() {
-        try {
-            startActivityForResult(Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent())
-                .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Để điện thoại tắt màn hình TV từ xa"), REQ_ADMIN)
-        } catch (e: Exception) {
-            // Một số TV box không có màn hình cấp quyền này: bỏ qua, sang bước đặt mặc định
-            Toast.makeText(this, "TV này không hỗ trợ cấp quyền Quản trị thiết bị", Toast.LENGTH_LONG).show()
-            nextAfterAdmin()
-        }
     }
 
     // ---------------- Đặt làm giao diện (màn hình chính) mặc định ----------------
@@ -641,13 +607,7 @@ class MainActivity : Activity(), FullscreenHost {
     private fun selfRemove() {
         // 1) Bỏ thiết lập "giao diện mặc định" của app này (nếu có)
         try { packageManager.clearPackagePreferredActivities(packageName) } catch (e: Exception) { }
-        // 2) Bỏ quyền Quản trị thiết bị, nếu không hệ thống sẽ chặn gỡ cài đặt
-        try {
-            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-            val cn = android.content.ComponentName(this, AdminReceiver::class.java)
-            if (dpm.isAdminActive(cn)) dpm.removeActiveAdmin(cn)
-        } catch (e: Exception) { }
-        // 3) Gỡ app
+        // 2) Gỡ app
         try {
             startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
@@ -804,7 +764,6 @@ class MainActivity : Activity(), FullscreenHost {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode) {
-            REQ_ADMIN -> nextAfterAdmin()
             REQ_FILE -> { fileCb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data)); fileCb = null }
             REQ_VOICE -> if (resultCode == RESULT_OK) {
                 val q = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()

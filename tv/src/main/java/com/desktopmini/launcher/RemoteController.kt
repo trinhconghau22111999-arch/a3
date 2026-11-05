@@ -1,7 +1,6 @@
 package com.desktopmini.launcher
 
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -226,12 +225,9 @@ class RemoteController(
         act.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
     }
 
-    /** Tắt màn hình TV: ưu tiên Device Admin (lockNow), không có thì khóa bằng dịch vụ trợ năng (Android 9+),
-     *  cuối cùng mới giảm độ sáng xuống thấp nhất. */
+    /** Tắt màn hình TV bằng dịch vụ trợ năng (Android 9+), không cần quyền Quản trị thiết bị.
+     *  Không được thì giảm độ sáng xuống thấp nhất. */
     private fun lock() {
-        val dpm = act.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val cn = ComponentName(act, AdminReceiver::class.java)
-        if (dpm.isAdminActive(cn)) { dpm.lockNow(); return }
         if (RemoteAccessibilityService.instance?.lockScreen() == true) return
         setBrightness(0)
         Toast.makeText(act, "TV này không tắt được hình (cần Android 9 trở lên). Đã giảm độ sáng tối thiểu.", Toast.LENGTH_LONG).show()
