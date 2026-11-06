@@ -23,6 +23,10 @@ object RemoteHub {
     var host: TransferHost? = null
         private set
     private var activityRef: WeakReference<MainActivity>? = null
+    const val EXTRA_HOME = "goHome"
+    /** true khi giao diện app đang ở phía trước (MainActivity.onResume/onPause). */
+    @Volatile var appVisible = false
+    private var warnedAcc = 0L
 
     fun setActivity(a: MainActivity?) { activityRef = a?.let { WeakReference(it) } }
 
@@ -58,18 +62,36 @@ object RemoteHub {
                     openApp(ctx)
                 } else svc?.handle(json)
             }
-            "move", "click", "scroll", "key" -> svc?.handle(json)
+            "home" -> bringToFront(ctx)
+            "move", "click", "scroll", "key" -> if (svc != null) svc.handle(json) else warnNoAccessibility(ctx)
             "media" -> media(ctx, o.optString("cmd"))
             "volume" -> volume(ctx, o.optInt("level", -1))
             "screen" -> if (o.optBoolean("on", true)) wake(ctx) else svc?.lockScreen()
         }
     }
 
-    private fun openApp(ctx: Context) {
-        val i = Intent(ctx, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        try { ctx.startActivity(i) } catch (e: Exception) { }
-        ui.postDelayed({ if (activityRef?.get() == null) RemoteAccessibilityService.instance?.goHome() }, 800)
+    private fun warnNoAccessibility(ctx: Context) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - warnedAcc < 15000) return
+        warnedAcc = now
+        ui.post { android.widget.Toast.makeText(ctx, "Chưa bật Trợ năng cho app TV nên không điều khiển được app khác. Vào Cài đặt > Trợ năng để bật.", android.widget.Toast.LENGTH_LONG).show() }
+    }
+
+    private fun openApp(ctx: Context) = bringToFront(ctx)
+
+    /** Đưa app lên phía trước (về màn hình chính của app). Thử mở trực tiếp (từ dịch vụ Trợ năng trước), không được thì bấm Home hệ thống
+     *  (app là giao diện mặc định thì Home sẽ về đúng app này). */
+    fun bringToFront(ctx: Context) {
+        ui.post {
+            val i = Intent(ctx, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_HOME, true)
+            val svc = RemoteAccessibilityService.instance
+            var started = false
+            try { if (svc != null) { svc.startActivity(i); started = true } } catch (e: Exception) { }
+            if (!started) try { ctx.startActivity(i) } catch (e: Exception) { }
+            ui.postDelayed({ if (!appVisible) RemoteAccessibilityService.instance?.goHome() }, 900)
+        }
     }
 
     private fun media(ctx: Context, cmd: String) {

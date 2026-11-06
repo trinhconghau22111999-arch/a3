@@ -97,6 +97,7 @@ class MainActivity : Activity(), FullscreenHost {
         buildUi()
         hideSystemBars()
         setMode(2)                      // mở app lên là vào thẳng YouTube
+        if (intent?.getBooleanExtra(RemoteHub.EXTRA_HOME, false) == true) { hideMenu(); setMode(0) }   // được gọi từ nút "Màn hình chính" khi app đã bị tắt
 
         refreshStatus()
         ui.postDelayed(tick, 15000)
@@ -117,6 +118,7 @@ class MainActivity : Activity(), FullscreenHost {
         }, 2500)
         ui.postDelayed({ nextAfterAdmin() }, 600)
         ui.postDelayed({ if (!isFinishing) maybeAskIgnoreBattery() }, 9000)
+        ui.postDelayed({ if (!isFinishing) maybeAskOverlay() }, 16000)
     }
 
     // Xin bỏ giới hạn pin cho app (một lần) để hệ thống TV ít giết dịch vụ nhận lệnh chạy nền
@@ -130,6 +132,25 @@ class MainActivity : Activity(), FullscreenHost {
             sp.edit().putBoolean("askedBatt", true).apply()
             startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                 .setData(Uri.parse("package:" + packageName)))
+        } catch (e: Exception) { }
+    }
+
+    // Android 10+: chỉ app có quyền "Hiển thị trên ứng dụng khác" mới tự mở lại được từ nền (nút Màn hình chính trên điện thoại khi TV đang ở app khác)
+    private fun maybeAskOverlay() {
+        if (Build.VERSION.SDK_INT < 23) return
+        val sp = getSharedPreferences("tv", MODE_PRIVATE)
+        if (sp.getBoolean("askedOverlay", false)) return
+        try {
+            if (android.provider.Settings.canDrawOverlays(this)) return
+            sp.edit().putBoolean("askedOverlay", true).apply()
+            AlertDialog.Builder(this)
+                .setTitle("Cho phép tự mở lại app?")
+                .setMessage("Để nút \"Màn hình chính\" trên điện thoại đưa TV về app này khi đang ở app khác, hãy bật quyền \"Hiển thị trên ứng dụng khác\" cho app.")
+                .setPositiveButton("Mở cài đặt") { _, _ ->
+                    try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).setData(Uri.parse("package:" + packageName))) } catch (e: Exception) { }
+                }
+                .setNegativeButton("Để sau", null)
+                .show()
         } catch (e: Exception) { }
     }
 
@@ -203,6 +224,7 @@ class MainActivity : Activity(), FullscreenHost {
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
         setBackgroundColor(BAR_BTN_BG)
+        isFocusable = false; isFocusableInTouchMode = false      // ô chọn do app tự vẽ (barFocus); để View nhận focus thì Enter bấm nhầm nút Menu
         minWidth = dp(48)
         setPadding(dp(10), 0, dp(10), 0)
     }
@@ -407,6 +429,17 @@ class MainActivity : Activity(), FullscreenHost {
         else -> null
     }
 
+    // Bàn phím / remote vật lý: đưa thẳng vào bộ xử lý ô chọn của app trước khi View nào đó (WebView, nút...) kịp nuốt Enter.
+    // Phím giả lập trong app (deviceId ảo) đi đường cũ để không bị lặp.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.deviceId != android.view.KeyCharacterMap.VIRTUAL_KEYBOARD && keyName(event.keyCode) != null) {
+            val handled = if (event.action == KeyEvent.ACTION_DOWN) onKeyDown(event.keyCode, event)
+                          else if (event.action == KeyEvent.ACTION_UP) onKeyUp(event.keyCode, event) else false
+            if (handled) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && barFocus < 0) {
             if (!allowKeyInput()) return true
@@ -565,11 +598,7 @@ class MainActivity : Activity(), FullscreenHost {
     private fun goAppHome() {
         hideMenu(); hideFull(); setMode(0)
         if (resumed) return
-        val toFront = Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        try { startActivity(toFront) } catch (e: Exception) { }
-        // Nếu hệ thống chặn mở từ nền: dùng Trợ năng bấm Home (app này là launcher mặc định thì sẽ về đúng app)
-        ui.postDelayed({ if (!resumed && !isFinishing) RemoteAccessibilityService.instance?.goHome() }, 800)
+        RemoteHub.bringToFront(applicationContext)
     }
 
     private fun systemMedia(cmd: String) {
@@ -965,8 +994,18 @@ class MainActivity : Activity(), FullscreenHost {
         tvLunar.text = "ÂL " + l[0] + "/" + l[1] + (if (l[3] == 1) " nhuận" else "")
     }
 
-    override fun onResume() { super.onResume(); resumed = true; RemoteAccessibilityService.instance?.hideCursor(); if (accPendingHome) { accPendingHome = false; ui.postDelayed({ maybeAskDefaultHome() }, 500) }; hideSystemBars(); refreshStatus(); if (mode == 1) tv?.onResume() else if (mode == 2) yt?.onResume() else if (mode == 3) aikara?.onResume() }
-    override fun onPause() { super.onPause(); resumed = false; tv?.onPause(); yt?.onPause(); aikara?.onPause() }
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent?.getBooleanExtra(RemoteHub.EXTRA_HOME, false) == true) { hideMenu(); hideFull(); setMode(0) }
+    }
+
+    // Giao diện xuống nền: gỡ WebView nhận lệnh khỏi cửa sổ (WebView nằm trong cửa sổ ẩn bị hệ thống đóng băng -> điện thoại hết điều khiển được)
+    override fun onStart() { super.onStart(); RemoteHub.host?.attach(hidden) }
+    override fun onStop() { super.onStop(); RemoteHub.host?.detach() }
+
+    override fun onResume() { super.onResume(); resumed = true; RemoteHub.appVisible = true; RemoteAccessibilityService.instance?.hideCursor(); if (accPendingHome) { accPendingHome = false; ui.postDelayed({ maybeAskDefaultHome() }, 500) }; hideSystemBars(); refreshStatus(); if (mode == 1) tv?.onResume() else if (mode == 2) yt?.onResume() else if (mode == 3) aikara?.onResume() }
+    override fun onPause() { super.onPause(); resumed = false; RemoteHub.appVisible = false; tv?.onPause(); yt?.onPause(); aikara?.onPause() }
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
