@@ -69,7 +69,7 @@ class MainActivity : Activity(), FullscreenHost {
     private var yt: YouTubePane? = null
     private var aikara: AiKaraPane? = null
     private val barItems = ArrayList<TextView>()
-    private var barFocus = 2                 // ô chọn trên thanh dưới: 0 Menu,1 TV,2 YouTube,3 Ái Kara,4 Cài đặt,5 Home,6 ←; -1 = đang điều khiển trang. Mở app: nằm sẵn ở YouTube
+    private var barFocus = -1                // ô chọn trên thanh dưới: 0 Menu,1 TV,2 YouTube,3 Ái Kara,4 Cài đặt,5 Home,6 ←; -1 = đang điều khiển trang. Mở app: nằm sẵn ở YouTube
     private var fullView: View? = null
     private var fullCb: WebChromeClient.CustomViewCallback? = null
     private var fileCb: ValueCallback<Array<Uri>>? = null
@@ -318,21 +318,59 @@ class MainActivity : Activity(), FullscreenHost {
     private fun handleRemoteKey(k: String): Boolean {
         if (k == "bar") {                               // giữ ▼ trên remote: nhảy xuống thanh dưới
             if (barFocus < 0) barFocus = when { menuLayer.visibility == View.VISIBLE -> 0; mode in 1..3 -> mode; else -> 0 }
-            updateButtons(); return true
+            armBarRelease(); updateButtons(); return true
         }
+        if (barFocus < 0 && mode == 0 && menuLayer.visibility != View.VISIBLE) { barFocus = 2; updateButtons(); return true }   // trang trống: phím đầu tiên đưa ô chọn xuống thanh dưới
         if (barFocus >= 0) {
+            armBarRelease()
             when (k) {
                 "left" -> if (barFocus > 0) barFocus--
                 "right" -> if (barFocus < barItems.lastIndex) barFocus++
                 "up" -> barFocus = -1                   // rời thanh dưới: lên menu ứng dụng / trang đang mở
                 "down" -> { }
-                "ok" -> { barItems.getOrNull(barFocus)?.performClick(); return true }
+                "ok" -> {                               // bấm xong là rời thanh dưới: Enter/OK lần sau chọn ô trên trang, không bấm lại nút này
+                    val b = barItems.getOrNull(barFocus)
+                    ui.removeCallbacks(barRelease); barFocus = -1; updateButtons()
+                    b?.performClick(); return true
+                }
                 else -> return false
             }
             updateButtons(); return true
         }
         if (menuLayer.visibility == View.VISIBLE) return menuKey(k)
         return when (mode) { 1 -> tv?.onKey(k) == true; 2 -> yt?.onKey(k) == true; else -> false }
+    }
+
+    // Ô chọn thanh dưới tự nhả sau 8 giây không bấm phím (mode 0 giữ nguyên) -> không bao giờ bị "kẹt" ở nút Cài đặt
+    private val barRelease = Runnable { if (mode != 0 && barFocus >= 0) { barFocus = -1; updateButtons() } }
+    private fun armBarRelease() { ui.removeCallbacks(barRelease); if (mode != 0) ui.postDelayed(barRelease, 8000) }
+
+    // Chuột (move/click) và phím (▲▼◀▶ OK, kể cả bàn phím nối TV) KHÔNG dùng đồng thời: ai dùng trước thì loại kia tạm tắt
+    // cho tới khi ngừng thao tác INPUT_LOCK_MS; sang loại mới thì dọn dấu vết của loại cũ (ẩn con trỏ / bỏ ô chọn thanh dưới).
+    private var lastInputKind = 0                 // 0 chưa có, 1 phím, 2 chuột
+    private var lastKeyAt = 0L
+    private var lastPtrAt = 0L
+
+    private fun allowKeyInput(): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (lastInputKind == 2 && now - lastPtrAt < INPUT_LOCK_MS) return false
+        if (lastInputKind != 1) {
+            ui.post { if (::remote.isInitialized) remote.hideCursor(); RemoteAccessibilityService.instance?.hideCursor() }
+            lastInputKind = 1
+        }
+        lastKeyAt = now
+        return true
+    }
+
+    private fun allowPointerInput(): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (lastInputKind == 1 && now - lastKeyAt < INPUT_LOCK_MS) return false
+        if (lastInputKind != 2) {
+            lastInputKind = 2
+            if (barFocus >= 0 && mode != 0) { ui.removeCallbacks(barRelease); barFocus = -1; updateButtons() }
+        }
+        lastPtrAt = now
+        return true
     }
 
     private fun menuKey(k: String): Boolean {
@@ -371,11 +409,13 @@ class MainActivity : Activity(), FullscreenHost {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && barFocus < 0) {
+            if (!allowKeyInput()) return true
             // Đang ở trang/menu: ▼ nhấn nhanh = đi xuống như thường (xử lý lúc nhả phím); giữ 2 giây = xuống thanh dưới
             if (event?.repeatCount == 0) { downHoldFired = false; downHoldPending = true; ui.removeCallbacks(downHold); ui.postDelayed(downHold, 2000) }
             return true
         }
         val k = keyName(keyCode)
+        if (k != null && !allowKeyInput()) return true       // đang dùng chuột: tạm bỏ phím
         if (k != null) {
             val inBarOrMenu = barFocus >= 0 || menuLayer.visibility == View.VISIBLE
             val isEnter = keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
@@ -384,6 +424,10 @@ class MainActivity : Activity(), FullscreenHost {
             if (isEnter && !inBarOrMenu && mode == 2) {        // YouTube: Enter = OK trên ô chọn, hoặc Enter trong ô gõ tìm kiếm
                 if ((event?.repeatCount ?: 0) == 0) yt?.enterKey()
                 return true
+            }
+            if (isEnter && !inBarOrMenu && mode == 1) {        // TV: Enter = OK trên ô đài/kênh đang chọn (đang xem kênh thì để trang tự xử lý)
+                if ((event?.repeatCount ?: 0) == 0 && handleRemoteKey("ok")) return true
+                if ((event?.repeatCount ?: 0) > 0) return true
             }
             if (inBarOrMenu || !isEnter) {
                 if (k == "ok" && (event?.repeatCount ?: 0) > 0) return true      // giữ OK không bấm lặp
@@ -430,6 +474,7 @@ class MainActivity : Activity(), FullscreenHost {
 
     private fun setMode(m: Int) {
         hideMenu()
+        barFocus = -1; updateButtons()
         setBarVisible(true)
         tv?.let { content.removeView(it.view); it.onPause() }
         yt?.let { content.removeView(it.view); it.onPause() }
@@ -473,10 +518,14 @@ class MainActivity : Activity(), FullscreenHost {
     // ---------------- Điều khiển app bên ngoài (qua dịch vụ Trợ năng) ----------------
 
     private var resumed = false
+    private val INPUT_LOCK_MS = 700L
 
     /** App TV ở phía trước: RemoteController xử lý. App khác ở phía trước: chuyển cho dịch vụ Trợ năng + phím media hệ thống. */
     fun routeRemote(json: String) {
-        if (barFocus >= 0 && json.contains("\"click\"")) { barFocus = -1; updateButtons() }   // dùng chuột bấm: bỏ ô chọn trên thanh dưới
+        when (try { JSONObject(json).optString("action") } catch (e: Exception) { "" }) {
+            "move", "click" -> if (!allowPointerInput()) return      // đang dùng phím: tạm bỏ chuột
+            "key" -> if (!allowKeyInput()) return                    // đang dùng chuột: tạm bỏ phím
+        }
         val svc = RemoteAccessibilityService.instance
         if (backBurst(json)) return
         if (resumed || isFinishing) { remote.handle(json); return }

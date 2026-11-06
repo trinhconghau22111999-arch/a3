@@ -86,6 +86,9 @@ class RemoteController(
 
     init { root.addView(cursor, FrameLayout.LayoutParams(size, size)) }
 
+    /** Ẩn con trỏ ngay (khi chuyển sang dùng phím). */
+    fun hideCursor() { ui.removeCallbacks(hideRunnable); cursor.visibility = View.GONE }
+
     private fun showCursor() {
         val w = root.width.toFloat().coerceAtLeast(1f)
         val h = root.height.toFloat().coerceAtLeast(1f)
