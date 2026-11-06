@@ -146,12 +146,9 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
             LinearLayout.LayoutParams(-1, dp(2)).also { it.topMargin = dp(8) })
 
         // Hang tren: tat man hinh + giong noi
-        btnScreen = IconButton(this, IconButton.POWER).also {
-            it.setOnClickListener {
-                tvScreenOn = !tvScreenOn
-                send(JSONObject().put("action", "screen").put("on", tvScreenOn))
-                refreshScreenButton()
-            }
+        // Nut "Màn hình chính": đang ở TV/YouTube/app khác -> về màn hình chính của app; đang ở màn hình chính của app -> về màn hình chính của TV
+        btnScreen = IconButton(this, IconButton.HOME).also {
+            it.setOnClickListener { send(JSONObject().put("action", "home")) }
         }
         val btnMic = IconButton(this, IconButton.MIC).also {
             it.setOnClickListener {
@@ -171,7 +168,7 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
             it.setOnClickListener { send(JSONObject().put("action", "fullscreen")) }
         }
         // 4 nut cung co, cach deu, nhan 2 dong cho can doi
-        screenBox = labeled(btnScreen, "TẮT\nMÀN HÌNH")
+        screenBox = labeled(btnScreen, "MÀN HÌNH\nCHÍNH")
         for (b in listOf(screenBox, labeled(btnMic, "GIỌNG\nNÓI"), touchBox, labeled(btnFull, "PHÓNG TO\nMÀN HÌNH"))) {
             top.addView(b, LinearLayout.LayoutParams(0, -2, 1f))
         }
@@ -348,8 +345,8 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
     /** Nut tat man hinh: do khi TV dang sang, xanh khi TV dang tat. */
     private fun refreshScreenButton() {
         // Man hinh TV dang sang: nut do (bam de tat); da tat: nut xanh (bam de bat lai)
-        (btnScreen as IconButton).tint = if (tvScreenOn) 0xFFE5322D.toInt() else 0xFF2BB673.toInt()
-        (screenBox.getChildAt(1) as TextView).text = if (tvScreenOn) "TẮT\nMÀN HÌNH" else "MỞ\nMÀN HÌNH"
+        (btnScreen as IconButton).tint = 0xFF3A7BFF.toInt()
+        (screenBox.getChildAt(1) as TextView).text = "MÀN HÌNH\nCHÍNH"
     }
 
     // ---------------------------------------------------------------- Touchpad

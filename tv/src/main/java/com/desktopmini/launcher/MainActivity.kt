@@ -527,6 +527,7 @@ class MainActivity : Activity(), FullscreenHost {
             "key" -> if (!allowKeyInput()) return                    // đang dùng chuột: tạm bỏ phím
         }
         val svc = RemoteAccessibilityService.instance
+        if (try { JSONObject(json).optString("action") == "home" } catch (e: Exception) { false }) { remoteHome(); return }
         if (backBurst(json)) return
         if (resumed || isFinishing) { remote.handle(json); return }
         val action = try { JSONObject(json).optString("action") } catch (e: Exception) { "" }
@@ -551,6 +552,13 @@ class MainActivity : Activity(), FullscreenHost {
         backTimes.clear()
         goAppHome()
         return true
+    }
+
+    /** Nút "Màn hình chính" trên remote điện thoại: đang ở TV / YouTube / menu / app khác -> về màn hình chính của app;
+     *  đã ở màn hình chính của app -> về màn hình chính của TV (launcher hệ thống). */
+    private fun remoteHome() {
+        val atAppHome = resumed && !isFinishing && mode == 0 && menuLayer.visibility != View.VISIBLE && fullView == null
+        if (atAppHome) goTvHome() else goAppHome()
     }
 
     /** Trang chủ của app: hình nền + thanh menu (không mở TV/YouTube); đưa app lên phía trước nếu đang ở app khác. */

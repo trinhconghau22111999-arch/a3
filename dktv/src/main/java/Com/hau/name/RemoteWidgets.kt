@@ -66,7 +66,18 @@ class IconButton(ctx: Context, private val kind: Int) : View(ctx) {
 
         line.color = if (inverted || tint != 0) PAPER else INK
         line.strokeWidth = 3f * d
-        if (kind == POWER) {
+        if (kind == HOME) {
+            // Nut ve man hinh chinh: hinh ngoi nha (mai + than + cua)
+            val w = r * 0.46f
+            c.drawPath(Path().apply {
+                moveTo(cx - w * 1.25f, cy - w * 0.05f); lineTo(cx, cy - w * 1.15f); lineTo(cx + w * 1.25f, cy - w * 0.05f)
+            }, line)
+            c.drawPath(Path().apply {
+                moveTo(cx - w * 0.85f, cy - w * 0.1f); lineTo(cx - w * 0.85f, cy + w * 0.95f)
+                lineTo(cx + w * 0.85f, cy + w * 0.95f); lineTo(cx + w * 0.85f, cy - w * 0.1f)
+            }, line)
+            c.drawLine(cx, cy + w * 0.95f, cx, cy + w * 0.3f, line)
+        } else if (kind == POWER) {
             val ri = r * 0.38f
             c.drawArc(RectF(cx - ri, cy - ri, cx + ri, cy + ri), -60f, 300f, false, line)
             c.drawLine(cx, cy - r * 0.46f, cx, cy - r * 0.04f, line)
@@ -136,7 +147,7 @@ class IconButton(ctx: Context, private val kind: Int) : View(ctx) {
         }
     }
 
-    companion object { const val POWER = 0; const val MIC = 1; const val TOUCH = 2; const val FULL = 3; const val REW = 4; const val FWD = 5; const val PLAY = 6; const val NEXT = 7 }
+    companion object { const val POWER = 0; const val MIC = 1; const val TOUCH = 2; const val FULL = 3; const val REW = 4; const val FWD = 5; const val PLAY = 6; const val NEXT = 7; const val HOME = 8 }
 }
 
 
