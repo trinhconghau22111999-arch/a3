@@ -233,7 +233,38 @@ const val YT_NAV_JS = """
    for(var i=0;i<l.length;i++){ var t=l[i].getBoundingClientRect(); if(t.bottom>0 && t.top<innerHeight) return l[i]; }
    return l[0];
  }
+ var anchor=null, followT=0, followLast=0;
+ function setOutline(el){
+   if(cur && cur!==el){ cur.style.outline=''; cur.style.outlineOffset=''; }
+   cur=el; el.style.outline='4px solid #00e676'; el.style.outlineOffset='-4px';
+ }
+ // Luot 2 ngon: o chon dung yen tren man hinh, video nao truot vao cho do thi o chon chuyen sang video do
+ function followNow(){
+   followLast=Date.now();
+   if(onSearch || typing() || !cur || !cur.isConnected) return;
+   if(!anchor){
+     var c=cur.getBoundingClientRect();
+     anchor={x:Math.max(0,Math.min(innerWidth-1,c.left+c.width/2)), y:Math.max(0,Math.min(innerHeight-1,c.top+c.height/2))};
+   }
+   var list=items(), best=null, bestD=Infinity;
+   for(var i=0;i<list.length;i++){
+     var r=list[i].getBoundingClientRect();
+     if(r.bottom<=0||r.top>=innerHeight) continue;
+     var inside=anchor.x>=r.left&&anchor.x<=r.right&&anchor.y>=r.top&&anchor.y<=r.bottom;
+     var dx=r.left+r.width/2-anchor.x, dy=r.top+r.height/2-anchor.y;
+     var dd=inside?-1:(dx*dx+dy*dy);
+     if(dd<bestD){ bestD=dd; best=list[i]; }
+   }
+   if(best && best!==cur) setOutline(best);
+ }
+ window.__wbFollow=function(){
+   if(!cur) return;
+   var now=Date.now();
+   if(now-followLast>=80){ if(followT){clearTimeout(followT);followT=0;} followNow(); }
+   else if(!followT){ followT=setTimeout(function(){ followT=0; followNow(); }, 80-(now-followLast)); }
+ };
  function mark(el){
+   anchor=null;
    unmarkSearch();
    if(cur && cur!==el){ cur.style.outline=''; cur.style.outlineOffset=''; }
    cur=el;

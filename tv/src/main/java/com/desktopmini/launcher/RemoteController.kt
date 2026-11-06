@@ -267,13 +267,14 @@ class RemoteController(
         private const val SCROLL_DEF = "(function(){if(window.__wbScroll)return 1;var el=null,lx=-9,ly=-9;" +
             "function can(e){var o=getComputedStyle(e).overflowY;return (o==='auto'||o==='scroll'||o==='overlay')&&e.scrollHeight>e.clientHeight+1;}" +
             "function app(e,d){var t=e.scrollTop;e.scrollTop=t+d;return e.scrollTop!==t;}" +
-            "window.__wbScroll=function(fx,fy,d){try{" +
+            "function raw(fx,fy,d){try{" +
             "var x=Math.min(innerWidth-1,fx*innerWidth),y=Math.min(innerHeight-1,fy*innerHeight);" +
             "if(Math.abs(fx-lx)>0.02||Math.abs(fy-ly)>0.02){el=null;lx=fx;ly=fy;}" +
             "if(el&&el.isConnected){var doc=(el===document.scrollingElement||el===document.documentElement);" +
             "if(doc||(function(){var r=el.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;})()){if(app(el,d))return 1;}}" +
             "var e=document.elementFromPoint(x,y);" +
             "while(e&&e!==document.body&&e!==document.documentElement){if(can(e)&&app(e,d)){el=e;return 1;}e=e.parentElement;}" +
-            "var s=document.scrollingElement||document.documentElement;el=s;app(s,d);}catch(err){window.scrollBy(0,d);}return 1;};return 1;})()"
+            "var s=document.scrollingElement||document.documentElement;el=s;app(s,d);}catch(err){window.scrollBy(0,d);}return 1;}" +
+            "window.__wbScroll=function(fx,fy,d){raw(fx,fy,d);try{if(window.__wbFollow)window.__wbFollow();}catch(e){}return 1;};return 1;})()"
     }
 }
