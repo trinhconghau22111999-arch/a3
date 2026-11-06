@@ -33,18 +33,21 @@ private const val PURGE_EVERY_MS = 10L * 60 * 1000
  * tự kết nối với mã cố định [CODE] và nhận/gửi tệp qua Firebase + WebRTC như trước.
  * Tệp nhận về nằm ở Tải xuống/TruyenTep.
  */
-class TransferHost(
-    private val act: Activity,
-    private val onTextEdit: (Int, String) -> Unit,
-    private val onKeepAwake: (Boolean) -> Unit,
-    private val onRemote: (String) -> Unit,
-    private val pickFile: (ValueCallback<Array<Uri>>?, WebChromeClient.FileChooserParams?) -> Boolean
-) {
+class TransferHost(context: Context) {
+    // Gắn với Application (không còn gắn với Activity) nên vẫn sống khi giao diện bị tắt; dịch vụ nền giữ tiến trình.
+    private val act: Context = context.applicationContext
+    var onTextEdit: (Int, String) -> Unit = { _, _ -> }
+    var onKeepAwake: (Boolean) -> Unit = { }
+    var onRemote: (String) -> Unit = { }
+    var pickFile: (ValueCallback<Array<Uri>>?, WebChromeClient.FileChooserParams?) -> Boolean =
+        { cb, _ -> cb?.onReceiveValue(null); true }
+
     private val ctx: Context get() = act
     private val contentResolver get() = act.contentResolver
     private fun getExternalFilesDir(t: String?) = act.getExternalFilesDir(t)
     private val filesDir get() = act.filesDir
-    private fun runOnUiThread(r: () -> Unit) { act.runOnUiThread { r() } }
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun runOnUiThread(r: () -> Unit) { mainHandler.post { r() } }
 
     var web: WebView? = null
         private set
@@ -79,8 +82,8 @@ class TransferHost(
 
     /** Gắn WebView ẩn (1x1, trong suốt) vào [parent] và bắt đầu kết nối. */
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
-    fun start(parent: FrameLayout) {
-        if (web != null) return
+    fun start(parent: FrameLayout?) {
+        if (web != null) { if (parent != null) attach(parent); return }
         purgeHandler.post(purgeTask)
         val w = WebView(act)
         w.settings.javaScriptEnabled = true
@@ -107,7 +110,23 @@ class TransferHost(
         w.addJavascriptInterface(CamBridge(), "AndroidCam")
         w.loadUrl("https://appassets.androidplatform.net/assets/truyentep.html")
         web = w
+        if (parent != null) parent.addView(w, FrameLayout.LayoutParams(1, 1))
+        else { w.onResume(); w.resumeTimers() }
+    }
+
+    /** Giao diện mở: gắn WebView ẩn vào khung của giao diện. */
+    fun attach(parent: FrameLayout) {
+        val w = web ?: return
+        if (w.parent === parent) return
+        (w.parent as? ViewGroup)?.removeView(w)
         parent.addView(w, FrameLayout.LayoutParams(1, 1))
+    }
+
+    /** Giao diện đóng: gỡ WebView khỏi khung nhưng KHÔNG huỷ, để kênh nhận lệnh vẫn chạy ngầm. */
+    fun detach() {
+        val w = web ?: return
+        (w.parent as? ViewGroup)?.removeView(w)
+        w.onResume(); w.resumeTimers()
     }
 
     fun destroy() {

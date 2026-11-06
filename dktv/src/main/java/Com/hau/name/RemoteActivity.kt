@@ -187,6 +187,12 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
         fun key(kind: Int, k: String, w: Int, h: Int, gravity: Int, l: Int = 0, t: Int = 0, r: Int = 0, b: Int = 0) {
             val v = DPadButton(this, kind).also {
                 it.setOnClickListener { send(JSONObject().put("action", "key").put("key", k)) }
+                // Giu phim ▼: nhay xuong thanh duoi cung (Menu / TV / YouTube...) cua TV de chon bang phim
+                if (k == "down") it.setOnLongClickListener {
+                    Haptics.tick(it)
+                    send(JSONObject().put("action", "key").put("key", "bar"))
+                    true
+                }
             }
             pad.addView(v, FrameLayout.LayoutParams(dp(w), dp(h), gravity).also {
                 it.setMargins(dp(l), dp(t), dp(r), dp(b))
@@ -359,6 +365,8 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
                 MotionEvent.ACTION_DOWN -> {
                     lastX = e.x; lastY = e.y; startX = e.x; startY = e.y
                     downAt = e.eventTime; moved = false; multi = false
+                    // Bao TV hien con tro ngay luc cham (khong cho den khi truot)
+                    send(JSONObject().put("action", "move").put("dx", 0).put("dy", 0), warn = false)
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     multi = true
@@ -402,23 +410,29 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
         return s / e.pointerCount
     }
 
-    /** Gop cac cu truot nho thanh toi da ~60 tin/giay de khong nghen kenh truyen. */
+    private var lastFlushAt = 0L
+
+    /** Gui ngay cu truot dau tien; cac cu tiep theo gop toi da ~60 tin/giay de khong nghen kenh truyen. */
     private fun scheduleFlush() {
         if (flushScheduled) return
+        val wait = 16L - (SystemClock.uptimeMillis() - lastFlushAt)
+        if (wait <= 0L) { flushNow(); return }
         flushScheduled = true
-        ui.postDelayed({
-            flushScheduled = false
-            val mx = pendDx.roundToInt(); val my = pendDy.roundToInt()
-            val sc = pendScroll.roundToInt()
-            if (mx != 0 || my != 0) {
-                pendDx -= mx; pendDy -= my
-                send(JSONObject().put("action", "move").put("dx", mx).put("dy", my), warn = false)
-            }
-            if (sc != 0) {
-                pendScroll -= sc
-                send(JSONObject().put("action", "scroll").put("dy", sc), warn = false)
-            }
-        }, 16)
+        ui.postDelayed({ flushScheduled = false; flushNow() }, wait)
+    }
+
+    private fun flushNow() {
+        lastFlushAt = SystemClock.uptimeMillis()
+        val mx = pendDx.roundToInt(); val my = pendDy.roundToInt()
+        val sc = pendScroll.roundToInt()
+        if (mx != 0 || my != 0) {
+            pendDx -= mx; pendDy -= my
+            send(JSONObject().put("action", "move").put("dx", mx).put("dy", my), warn = false)
+        }
+        if (sc != 0) {
+            pendScroll -= sc
+            send(JSONObject().put("action", "scroll").put("dy", sc), warn = false)
+        }
     }
 
     // ---------------------------------------------------------------- Mic

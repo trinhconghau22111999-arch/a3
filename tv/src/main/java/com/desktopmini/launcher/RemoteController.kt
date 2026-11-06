@@ -112,7 +112,7 @@ class RemoteController(
             "click" -> { showCursor(); tap() }
             "scroll" -> {
                 val dy = o.optInt("dy")
-                if (onScroll?.invoke(-dy * 2) != true) scrollAtCursor(-dy * 2)
+                if (onScroll?.invoke(-dy * 2) != true) queueScroll(-dy * 2)
             }
             "key" -> key(o.optString("key"))
             "screen" -> if (o.optBoolean("on", true)) wake() else lock()
@@ -156,8 +156,31 @@ class RemoteController(
      * Cuon dung vung dang tro chuot: tim phan tu duoi con tro, di len cha cho toi khi gap khung cuon duoc
      * (vd. danh sach goi y ben phai) va cuon khung do; khong co thi cuon ca trang (video chinh).
      */
-    private fun scrollAtCursor(dy: Int) {
-        val wv = activeWeb() ?: return
+    // Gop cac lenh cuon: chi 1 lenh JS chay cung luc, lenh den trong luc do duoc cong don roi chay 1 lan -> khong xep hang, khong giat.
+    private var scrollAccum = 0
+    private var scrollBusy = false
+    private val scrollUnlock = Runnable { scrollBusy = false; pumpScroll() }
+
+    private fun queueScroll(d: Int) {
+        scrollAccum += d
+        pumpScroll()
+    }
+
+    private fun pumpScroll() {
+        if (scrollBusy || scrollAccum == 0) return
+        val d = scrollAccum; scrollAccum = 0
+        scrollBusy = true
+        ui.removeCallbacks(scrollUnlock)
+        ui.postDelayed(scrollUnlock, 120)          // du phong: JS khong tra loi thi van mo khoa
+        scrollAtCursor(d) {
+            ui.removeCallbacks(scrollUnlock)
+            scrollBusy = false
+            if (scrollAccum != 0) pumpScroll()
+        }
+    }
+
+    private fun scrollAtCursor(dy: Int, done: () -> Unit = {}) {
+        val wv = activeWeb() ?: run { done(); return }
         val a = IntArray(2); val b = IntArray(2)
         wv.getLocationInWindow(a); root.getLocationInWindow(b)
         val fx = ((cx - (a[0] - b[0])) / wv.width.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -170,7 +193,7 @@ class RemoteController(
             "var t=e.scrollTop;e.scrollTop=t+d;if(e.scrollTop!==t)return;}" +
             "e=e.parentElement;}" +
             "var s=document.scrollingElement||document.documentElement;s.scrollTop+=d;}catch(err){window.scrollBy(0,$dy);}})()"
-        wv.evaluateJavascript(js, null)
+        wv.evaluateJavascript(js) { done() }
     }
 
     /** Am luong TV (luong media) theo muc 0..100. */
@@ -211,6 +234,7 @@ class RemoteController(
     }
 
     private fun key(k: String) {
+        if (k == "bar") { onKey?.invoke(k); return }     // giu ▼ tren remote: nhay xuong thanh duoi cung
         val code = when (k) {
             "up" -> KeyEvent.KEYCODE_DPAD_UP
             "down" -> KeyEvent.KEYCODE_DPAD_DOWN

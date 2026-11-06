@@ -132,15 +132,36 @@ class RemoteAccessibilityService : AccessibilityService() {
                 }
                 "click" -> { showCursor(); gesture(cx, cy, cx, cy, 50) }
                 "scroll" -> {
-                    val d = -o.optInt("dy") * 2 * resources.displayMetrics.density * 6f
-                    // vuốt ngược chiều để nội dung cuộn theo chiều remote
-                    val y2 = (cy - d).coerceIn(0f, dm.heightPixels - 1f)
-                    showCursor(); gesture(cx, cy, cx, y2, 250)
+                    scrollAccum += -o.optInt("dy") * 2 * resources.displayMetrics.density * 6f
+                    showCursor(); pumpScroll(dm)
                 }
                 "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
                 "key" -> key(o.optString("key"), dm)
             }
         }
+    }
+
+    // Cuon: gop cac lenh den trong luc cu vuot truoc chua xong, vuot ngan (~90ms) lien tiep cho muot
+    private var scrollAccum = 0f
+    private var scrollBusy = false
+
+    private fun pumpScroll(dm: DisplayMetrics) {
+        if (scrollBusy || Build.VERSION.SDK_INT < 24) return
+        val d = scrollAccum.coerceIn(-dm.heightPixels * 0.6f, dm.heightPixels * 0.6f)
+        if (kotlin.math.abs(d) < 1f) return
+        scrollAccum = 0f
+        val y1 = cy.coerceIn(0f, dm.heightPixels - 1f)
+        val y2 = (cy - d).coerceIn(0f, dm.heightPixels - 1f)
+        val path = Path().apply { moveTo(cx, y1); lineTo(cx, y2) }
+        scrollBusy = true
+        val cb = object : GestureResultCallback() {
+            override fun onCompleted(g: GestureDescription?) { scrollBusy = false; if (scrollAccum != 0f) pumpScroll(screen()) }
+            override fun onCancelled(g: GestureDescription?) { scrollBusy = false }
+        }
+        try {
+            if (!dispatchGesture(GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, 90)).build(), cb, ui)) scrollBusy = false
+        } catch (e: Exception) { scrollBusy = false }
     }
 
     private fun key(k: String, dm: DisplayMetrics) {

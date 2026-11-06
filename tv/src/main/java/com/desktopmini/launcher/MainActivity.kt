@@ -68,7 +68,8 @@ class MainActivity : Activity(), FullscreenHost {
     private var tv: TvPane? = null
     private var yt: YouTubePane? = null
     private var aikara: AiKaraPane? = null
-    private var transfer: TransferHost? = null
+    private val barItems = ArrayList<TextView>()
+    private var barFocus = 2                 // ô chọn trên thanh dưới: 0 Menu,1 TV,2 YouTube,3 Ái Kara,4 Cài đặt,5 Home,6 ←; -1 = đang điều khiển trang. Mở app: nằm sẵn ở YouTube
     private var fullView: View? = null
     private var fullCb: WebChromeClient.CustomViewCallback? = null
     private var fileCb: ValueCallback<Array<Uri>>? = null
@@ -104,15 +105,15 @@ class MainActivity : Activity(), FullscreenHost {
             checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         ) requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_STORAGE)
 
-        // Truyền tệp chạy ngầm: khởi động trễ vài giây để giao diện hiện ra trước cho nhanh
+        // Kênh nhận lệnh remote/truyền tệp sống theo tiến trình (không bị tắt theo giao diện); dịch vụ nền giữ nó khi tắt app
+        RemoteHub.setActivity(this)
+        RemoteKeepAliveService.start(this)
         ui.postDelayed({
-            if (isFinishing || transfer != null) return@postDelayed
-            transfer = TransferHost(this,
-                onTextEdit = { del, ins -> applyTextEdit(del, ins) },
-                onKeepAwake = { },
-                onRemote = { json -> routeRemote(json) },
-                pickFile = { cb, params -> openFileChooser(cb, params) })
-            transfer?.start(hidden)
+            if (isFinishing) return@postDelayed
+            val h = RemoteHub.ensureHost(applicationContext)
+            h.onTextEdit = { del, ins -> applyTextEdit(del, ins) }
+            h.pickFile = { cb, params -> openFileChooser(cb, params) }
+            h.attach(hidden)
         }, 2500)
         ui.postDelayed({ nextAfterAdmin() }, 600)
     }
@@ -171,7 +172,12 @@ class MainActivity : Activity(), FullscreenHost {
     private val BAR_TEXT = 0xFF1A1A1A.toInt()
 
     private fun activeBtn(b: TextView, on: Boolean, onColor: Int) {
-        b.setBackgroundColor(if (on) onColor else BAR_BTN_BG)
+        val fill = if (on) onColor else BAR_BTN_BG
+        val focused = barFocus >= 0 && barItems.indexOf(b) == barFocus
+        b.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(fill)
+            if (focused) setStroke(dp(4), 0xFFFF6B00.toInt())     // ô chọn (viền cam)
+        }
         b.setTextColor(if (on) Color.WHITE else BAR_TEXT)
     }
 
@@ -216,6 +222,7 @@ class MainActivity : Activity(), FullscreenHost {
             group.addView(b, LinearLayout.LayoutParams(0, -1, 1f).also { if (i > 0) it.leftMargin = dp(4) })
         }
         bar.addView(group, LinearLayout.LayoutParams(0, -1, 1f))
+        barItems.clear(); barItems.addAll(listOf(btnMenu, btnTv, btnYt, btnAi, btnSettings, btnHome, btnBack))
 
         // Góc phải: giờ, ngày, âm lịch (cùng cỡ chữ 13sp, đậm), rồi nút X gỡ app
         val cluster = 13f
@@ -261,7 +268,7 @@ class MainActivity : Activity(), FullscreenHost {
         remote.onNext = { mode == 1 && (tv?.nextChannel() == true) }
         remote.onBack = { goBack() }
         remote.onScroll = { d -> mode == 1 && tv?.scrollList(d) == true }
-        remote.onKey = { k -> if (mode == 1) tv?.onKey(k) == true else if (mode == 2) yt?.onKey(k) == true else false }
+        remote.onKey = { k -> handleRemoteKey(k) }
         remote.onFullscreen = { if (fullView != null) hideFull() else remote.fullscreenVideo() }
         hidden = FrameLayout(this)
         root.addView(hidden, FrameLayout.LayoutParams(1, 1))
@@ -287,6 +294,62 @@ class MainActivity : Activity(), FullscreenHost {
         activeBtn(btnTv, mode == 1, 0xFF3A7BFF.toInt())
         activeBtn(btnYt, mode == 2, 0xFFE02B2B.toInt())
         activeBtn(btnAi, mode == 3, 0xFF8E44AD.toInt())
+        for (i in 4 until barItems.size) activeBtn(barItems[i], false, 0)
+    }
+
+    // ---------------- Phím ▲▼◀▶ OK từ remote: thanh dưới cùng / Menu ứng dụng / trang đang mở ----------------
+
+    /** Thanh dưới có ô chọn: ◀▶ đi qua Menu...← (dừng trước đồng hồ), OK bấm nút, ▲ lên trang/menu. Menu ứng dụng: ▲▼◀▶ chọn, OK mở. */
+    private fun handleRemoteKey(k: String): Boolean {
+        if (k == "bar") {                               // giữ ▼ trên remote: nhảy xuống thanh dưới
+            if (barFocus < 0) barFocus = when { menuLayer.visibility == View.VISIBLE -> 0; mode in 1..3 -> mode; else -> 0 }
+            updateButtons(); return true
+        }
+        if (barFocus >= 0) {
+            when (k) {
+                "left" -> if (barFocus > 0) barFocus--
+                "right" -> if (barFocus < barItems.lastIndex) barFocus++
+                "up" -> barFocus = -1                   // rời thanh dưới: lên menu ứng dụng / trang đang mở
+                "down" -> { }
+                "ok" -> { barItems.getOrNull(barFocus)?.performClick(); return true }
+                else -> return false
+            }
+            updateButtons(); return true
+        }
+        if (menuLayer.visibility == View.VISIBLE) return menuKey(k)
+        return when (mode) { 1 -> tv?.onKey(k) == true; 2 -> yt?.onKey(k) == true; else -> false }
+    }
+
+    private fun menuKey(k: String): Boolean {
+        val grid = menuLayer.getChildAt(0) as? android.widget.GridView ?: return true
+        val code = when (k) {
+            "up" -> KeyEvent.KEYCODE_DPAD_UP; "down" -> KeyEvent.KEYCODE_DPAD_DOWN
+            "left" -> KeyEvent.KEYCODE_DPAD_LEFT; "right" -> KeyEvent.KEYCODE_DPAD_RIGHT
+            "ok" -> -1; else -> return false
+        }
+        if (grid.count == 0) return true
+        if (!grid.hasFocus()) { grid.isFocusableInTouchMode = true; grid.requestFocus() }
+        if (grid.selectedItemPosition < 0) { grid.setSelection(0); return true }
+        if (code == -1) {
+            val pos = grid.selectedItemPosition
+            grid.performItemClick(grid.getChildAt(pos - grid.firstVisiblePosition), pos, grid.getItemIdAtPosition(pos))
+            return true
+        }
+        val before = grid.selectedItemPosition
+        grid.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+        grid.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        if (k == "down" && grid.selectedItemPosition == before) { barFocus = 0; updateButtons() }   // hết hàng cuối: xuống thanh dưới
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val k = when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> "up"; KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+            KeyEvent.KEYCODE_DPAD_LEFT -> "left"; KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+            KeyEvent.KEYCODE_DPAD_CENTER -> "ok"; else -> null
+        }
+        if (k != null && (barFocus >= 0 || menuLayer.visibility == View.VISIBLE) && handleRemoteKey(k)) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     // ---------------- Chế độ TV / YouTube ----------------
@@ -358,7 +421,8 @@ class MainActivity : Activity(), FullscreenHost {
     private var resumed = false
 
     /** App TV ở phía trước: RemoteController xử lý. App khác ở phía trước: chuyển cho dịch vụ Trợ năng + phím media hệ thống. */
-    private fun routeRemote(json: String) {
+    fun routeRemote(json: String) {
+        if (barFocus >= 0 && json.contains("\"click\"")) { barFocus = -1; updateButtons() }   // dùng chuột bấm: bỏ ô chọn trên thanh dưới
         val svc = RemoteAccessibilityService.instance
         if (backBurst(json)) return
         if (resumed || isFinishing) { remote.handle(json); return }
@@ -795,7 +859,8 @@ class MainActivity : Activity(), FullscreenHost {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
-        transfer?.destroy()
+        RemoteHub.setActivity(null)
+        RemoteHub.host?.let { it.onTextEdit = { _, _ -> }; it.pickFile = { cb, _ -> cb?.onReceiveValue(null); true }; it.detach() }
         try { connWake?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }
         tv?.destroy(); yt?.destroy(); aikara?.destroy()
         super.onDestroy()
