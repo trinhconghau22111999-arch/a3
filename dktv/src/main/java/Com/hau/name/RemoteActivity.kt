@@ -365,6 +365,13 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
     private var pendDy = 0f
     private var pendScroll = 0f
     private var flushScheduled = false
+    private var lastMoveT = 0L
+    private var scrollActive = false
+    private var flingV = 0f
+    private var flingLastT = 0L
+    private val sampT = LongArray(6)
+    private val sampY = FloatArray(6)
+    private var sampN = 0
 
     @SuppressLint("ClickableViewAccessibility")
     private fun attachTouchpad(pad: View) {
@@ -373,11 +380,13 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
                 MotionEvent.ACTION_DOWN -> {
                     lastX = e.x; lastY = e.y; startX = e.x; startY = e.y
                     downAt = e.eventTime; moved = false; multi = false
+                    stopFling(); scrollActive = false; sampN = 0; lastMoveT = e.eventTime
                     // Bao TV hien con tro ngay luc cham (khong cho den khi truot)
                     send(JSONObject().put("action", "move").put("dx", 0).put("dy", 0), warn = false)
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     multi = true
+                    stopFling(); sampN = 0
                     lastY = avgY(e)
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -385,18 +394,27 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
                         val y = avgY(e)
                         pendScroll += (y - lastY) * SCROLL_GAIN
                         lastY = y
+                        scrollActive = true
+                        addSample(e.eventTime, y)
                         scheduleFlush()
                     } else if (!multi) {
                         val dx = e.x - lastX
                         val dy = e.y - lastY
                         lastX = e.x; lastY = e.y
                         if (!moved && (abs(e.x - startX) > dp(6) || abs(e.y - startY) > dp(6))) moved = true
-                        pendDx += dx * MOVE_GAIN
-                        pendDy += dy * MOVE_GAIN
+                        // Gia toc con tro: di cham = chinh xac, vuot nhanh = bay xa (nhu chuot may tinh)
+                        val dt = (e.eventTime - lastMoveT).coerceAtLeast(1L)
+                        lastMoveT = e.eventTime
+                        val v = kotlin.math.hypot(dx, dy) / dt / resources.displayMetrics.density   // dp tren ms
+                        val t = ((v - ACC_V0) / (ACC_V1 - ACC_V0)).coerceIn(0f, 1f)
+                        val g = MOVE_GAIN_SLOW + (MOVE_GAIN_FAST - MOVE_GAIN_SLOW) * t * t * (3f - 2f * t)
+                        pendDx += dx * g
+                        pendDy += dy * g
                         scheduleFlush()
                     }
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
+                    if (scrollActive && e.pointerCount == 2) startFling(e.eventTime)
                     // Con 1 ngon sau khi nha ngon thu 2: khong gay nhay con tro
                     val idx = if (e.actionIndex == 0) 1 else 0
                     if (idx < e.pointerCount) { lastX = e.getX(idx); lastY = e.getY(idx) }
@@ -434,6 +452,43 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
         if (wait <= 0L) { flushNow(); return }
         flushScheduled = true
         ui.postDelayed({ flushScheduled = false; flushNow() }, wait)
+    }
+
+    private fun addSample(t: Long, y: Float) {
+        if (sampN == sampT.size) {
+            for (i in 1 until sampN) { sampT[i - 1] = sampT[i]; sampY[i - 1] = sampY[i] }
+            sampN--
+        }
+        sampT[sampN] = t; sampY[sampN] = y; sampN++
+    }
+
+    /** Nha 2 ngon dang luot: cuon tiep voi van toc cu va cham dan (quan tinh nhu touchpad laptop). */
+    private fun startFling(upT: Long) {
+        scrollActive = false
+        if (sampN < 2 || upT - sampT[sampN - 1] > 80) { sampN = 0; return }       // dung ngon truoc khi nha: khong troi
+        var i0 = sampN - 1
+        while (i0 > 0 && sampT[sampN - 1] - sampT[i0 - 1] <= 90) i0--
+        val dt = (sampT[sampN - 1] - sampT[i0]).coerceAtLeast(1L)
+        val v = (sampY[sampN - 1] - sampY[i0]) / dt * SCROLL_GAIN               // px tren ms
+        sampN = 0
+        if (kotlin.math.abs(v) < FLING_MIN_V) return
+        flingV = v.coerceIn(-FLING_MAX_V, FLING_MAX_V)
+        flingLastT = SystemClock.uptimeMillis()
+        ui.removeCallbacks(flingStep); ui.post(flingStep)
+    }
+
+    private fun stopFling() { flingV = 0f; ui.removeCallbacks(flingStep) }
+
+    private val flingStep = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            val dt = (now - flingLastT).coerceIn(1L, 50L)
+            flingLastT = now
+            pendScroll += flingV * dt
+            flingV *= Math.pow(FLING_DECAY.toDouble(), dt / 16.0).toFloat()       // ma sat: giam deu theo thoi gian
+            scheduleFlush()
+            if (kotlin.math.abs(flingV) >= FLING_STOP_V) ui.postDelayed(this, 16) else flingV = 0f
+        }
     }
 
     private fun flushNow() {
@@ -531,7 +586,14 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
 
     companion object {
         private const val LABEL_W = 70
-        private const val MOVE_GAIN = 1.8f
+        private const val MOVE_GAIN_SLOW = 1.1f      // di cham: chinh xac
+        private const val MOVE_GAIN_FAST = 3.6f      // vuot nhanh: bay xa
+        private const val ACC_V0 = 0.15f             // dp/ms bat dau tang toc
+        private const val ACC_V1 = 1.6f              // dp/ms dat toc do toi da
+        private const val FLING_MIN_V = 0.25f        // px/ms: cham hon thi khong troi
+        private const val FLING_MAX_V = 6f
+        private const val FLING_STOP_V = 0.03f
+        private const val FLING_DECAY = 0.94f        // moi 16ms
         private const val SCROLL_GAIN = 1.0f
         private const val TAP_MS = 250L
         private const val BAR_HOLD_MS = 2000L

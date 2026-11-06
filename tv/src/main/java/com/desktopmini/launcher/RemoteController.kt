@@ -185,15 +185,11 @@ class RemoteController(
         wv.getLocationInWindow(a); root.getLocationInWindow(b)
         val fx = ((cx - (a[0] - b[0])) / wv.width.coerceAtLeast(1)).coerceIn(0f, 1f)
         val fy = ((cy - (a[1] - b[1])) / wv.height.coerceAtLeast(1)).coerceIn(0f, 1f)
-        val js = "(function(){try{var x=Math.min(window.innerWidth-1,$fx*window.innerWidth),y=Math.min(window.innerHeight-1,$fy*window.innerHeight),d=$dy;" +
-            "var e=document.elementFromPoint(x,y);" +
-            "while(e&&e!==document.body&&e!==document.documentElement){" +
-            "var o=getComputedStyle(e).overflowY;" +
-            "if((o==='auto'||o==='scroll'||o==='overlay')&&e.scrollHeight>e.clientHeight+1){" +
-            "var t=e.scrollTop;e.scrollTop=t+d;if(e.scrollTop!==t)return;}" +
-            "e=e.parentElement;}" +
-            "var s=document.scrollingElement||document.documentElement;s.scrollTop+=d;}catch(err){window.scrollBy(0,$dy);}})()"
-        wv.evaluateJavascript(js) { done() }
+        // Ham cuon duoc cai 1 lan vao trang va nho khung dang cuon (khi con tro dung yen): moi lenh chi con 1 phep gan scrollTop, nhe cho TV yeu
+        val call = "window.__wbScroll($fx,$fy,$dy)"
+        wv.evaluateJavascript("typeof window.__wbScroll==='function'?" + call + ":0") { r ->
+            if (r == "0") wv.evaluateJavascript(SCROLL_DEF + ";" + call) { done() } else done()
+        }
     }
 
     /** Am luong TV (luong media) theo muc 0..100. */
@@ -266,5 +262,18 @@ class RemoteController(
         wl.acquire(3000)
     }
 
-    companion object { private const val GAIN = 1.6f }
+    companion object {
+        private const val GAIN = 1.6f
+        private const val SCROLL_DEF = "(function(){if(window.__wbScroll)return 1;var el=null,lx=-9,ly=-9;" +
+            "function can(e){var o=getComputedStyle(e).overflowY;return (o==='auto'||o==='scroll'||o==='overlay')&&e.scrollHeight>e.clientHeight+1;}" +
+            "function app(e,d){var t=e.scrollTop;e.scrollTop=t+d;return e.scrollTop!==t;}" +
+            "window.__wbScroll=function(fx,fy,d){try{" +
+            "var x=Math.min(innerWidth-1,fx*innerWidth),y=Math.min(innerHeight-1,fy*innerHeight);" +
+            "if(Math.abs(fx-lx)>0.02||Math.abs(fy-ly)>0.02){el=null;lx=fx;ly=fy;}" +
+            "if(el&&el.isConnected){var doc=(el===document.scrollingElement||el===document.documentElement);" +
+            "if(doc||(function(){var r=el.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;})()){if(app(el,d))return 1;}}" +
+            "var e=document.elementFromPoint(x,y);" +
+            "while(e&&e!==document.body&&e!==document.documentElement){if(can(e)&&app(e,d)){el=e;return 1;}e=e.parentElement;}" +
+            "var s=document.scrollingElement||document.documentElement;el=s;app(s,d);}catch(err){window.scrollBy(0,d);}return 1;};return 1;})()"
+    }
 }

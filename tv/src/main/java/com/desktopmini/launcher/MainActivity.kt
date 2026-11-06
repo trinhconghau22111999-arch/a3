@@ -116,6 +116,21 @@ class MainActivity : Activity(), FullscreenHost {
             h.attach(hidden)
         }, 2500)
         ui.postDelayed({ nextAfterAdmin() }, 600)
+        ui.postDelayed({ if (!isFinishing) maybeAskIgnoreBattery() }, 9000)
+    }
+
+    // Xin bỏ giới hạn pin cho app (một lần) để hệ thống TV ít giết dịch vụ nhận lệnh chạy nền
+    private fun maybeAskIgnoreBattery() {
+        if (Build.VERSION.SDK_INT < 23) return
+        val sp = getSharedPreferences("tv", MODE_PRIVATE)
+        if (sp.getBoolean("askedBatt", false)) return
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (pm.isIgnoringBatteryOptimizations(packageName)) return
+            sp.edit().putBoolean("askedBatt", true).apply()
+            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                .setData(Uri.parse("package:" + packageName)))
+        } catch (e: Exception) { }
     }
 
     // Không xin quyền Quản trị thiết bị. Chuyển sang bước hỏi dịch vụ trợ năng.
