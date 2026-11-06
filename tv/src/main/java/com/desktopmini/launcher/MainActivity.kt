@@ -361,7 +361,16 @@ class MainActivity : Activity(), FullscreenHost {
             return true
         }
         val k = keyName(keyCode)
-        if (k != null && (barFocus >= 0 || menuLayer.visibility == View.VISIBLE) && handleRemoteKey(k)) return true
+        if (k != null) {
+            val inBarOrMenu = barFocus >= 0 || menuLayer.visibility == View.VISIBLE
+            val isEnter = keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+            // Trang đang mở (YouTube / chọn đài-kênh TV): ▲ ◀ ▶ OK đi qua đúng bộ xử lý như remote điện thoại.
+            // Enter của bàn phím chữ chỉ làm OK ở thanh dưới/menu để không phá việc gõ chữ vào ô tìm kiếm.
+            if (inBarOrMenu || !isEnter) {
+                if (k == "ok" && (event?.repeatCount ?: 0) > 0) return true      // giữ OK không bấm lặp
+                if (handleRemoteKey(k)) return true
+            }
+        }
         return super.onKeyDown(keyCode, event)
     }
 
