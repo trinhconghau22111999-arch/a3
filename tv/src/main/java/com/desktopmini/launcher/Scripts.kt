@@ -194,7 +194,47 @@ const val YT_NAV_JS = """
    }
    return out;
  }
+ var sEl=null, onSearch=false;
+ function unmarkSearch(){ if(sEl){ sEl.style.outline=''; sEl.style.outlineOffset=''; } sEl=null; onSearch=false; }
+ function typing(){
+   var a=document.activeElement;
+   return !!(a && (a.tagName==='INPUT' || a.tagName==='TEXTAREA' || a.isContentEditable));
+ }
+ function visible(el){ var r=el.getBoundingClientRect(); return r.width>0 && r.height>0; }
+ // Nut / o tim kiem tren dau trang (ban di dong + ban may tinh); bo qua nut tim bang giong noi
+ function searchBtn(){
+   var sel='ytm-searchbox button,ytm-searchbox input,ytm-search-icon-button button,button#search-icon-legacy,ytd-searchbox input,ytd-searchbox button,input[name=search_query],button,a,[role=button]';
+   var els=document.querySelectorAll(sel), fallback=null;
+   for(var i=0;i<els.length;i++){
+     var el=els[i]; if(!visible(el)) continue;
+     var lab=((el.getAttribute('aria-label')||'')+' '+(el.getAttribute('title')||'')+' '+(el.getAttribute('placeholder')||'')).toLowerCase();
+     if(/giong noi|giọng nói|voice|speak/.test(lab)) continue;
+     var isBox=el.matches('ytm-searchbox button,ytm-searchbox input,ytm-search-icon-button button,button#search-icon-legacy,ytd-searchbox input,ytd-searchbox button,input[name=search_query]');
+     var byLab=/tìm kiếm|tim kiem|search/.test(lab);
+     var inHead=!!el.closest('ytm-mobile-topbar-renderer,.mobile-topbar-header,header,ytd-masthead,#masthead-container');
+     var r=el.getBoundingClientRect();
+     if(isBox || (byLab && (inHead || r.top<120))) return el;
+   }
+   return fallback;
+ }
+ function markSearch(el){
+   if(cur){ cur.style.outline=''; cur.style.outlineOffset=''; cur=null; }
+   unmarkSearch();
+   sEl=el; onSearch=true;
+   el.style.outline='4px solid #00e676'; el.style.outlineOffset='-2px';
+   window.scrollTo({left:0,top:0,behavior:'smooth'});
+ }
+ function focusSearchInput(){
+   var i=document.querySelector('input[name=search_query],input[type=search],input.searchbox-input,input#search');
+   if(i && visible(i)){ i.focus(); try{i.select();}catch(e){} unmarkSearch(); return true; }
+   return false;
+ }
+ function firstItem(l){
+   for(var i=0;i<l.length;i++){ var t=l[i].getBoundingClientRect(); if(t.bottom>0 && t.top<innerHeight) return l[i]; }
+   return l[0];
+ }
  function mark(el){
+   unmarkSearch();
    if(cur && cur!==el){ cur.style.outline=''; cur.style.outlineOffset=''; }
    cur=el;
    if(el){
@@ -204,6 +244,8 @@ const val YT_NAV_JS = """
    }
  }
  window.__wbNav=function(d){
+   if(typing()) return false;          // dang go chu: ◀▶ dich con tro chu nhu binh thuong
+   if(onSearch) return true;
    var list=items(); if(!list.length) return false;
    if(cur && !cur.isConnected) cur=null;
    var idx=cur?list.indexOf(cur):-1;
@@ -220,7 +262,16 @@ const val YT_NAV_JS = """
  // LEN / XUONG: sang video o hang tren / hang duoi (tim theo vi tri tren man hinh, uu tien video thang cot).
  // Khong co video o hang do thi cuon trang len / xuong.
  window.__wbVert=function(d){
-   var list=items(); if(!list.length) return false;
+   if(typing()){                        // dang go chu: ▼ thoat o go, chon video; ▲ khong lam gi
+     if(d>0){ document.activeElement.blur(); var l0=items(); if(l0.length) mark(firstItem(l0)); }
+     return true;
+   }
+   var list=items();
+   if(onSearch){                        // dang o nut tim kiem: ▼ ve hang video dau
+     if(d>0){ unmarkSearch(); if(list.length) mark(firstItem(list)); }
+     return true;
+   }
+   if(!list.length){ if(d<0){ var sb0=searchBtn(); if(sb0){ markSearch(sb0); return true; } } return false; }
    if(cur && !cur.isConnected) cur=null;
    var idx=cur?list.indexOf(cur):-1;
    if(idx<0){ return window.__wbNav(0); }
@@ -235,10 +286,33 @@ const val YT_NAV_JS = """
      var s=dy+Math.abs(x-cx)*2;
      if(s<bestS){ bestS=s; best=i; }
    }
-   if(best<0){ window.scrollBy(0, d*innerHeight*0.6); return true; }
+   if(best<0){
+     if(d<0){ var sb=searchBtn(); if(sb){ markSearch(sb); return true; } }   // hang tren cung + ▲ = len nut tim kiem
+     window.scrollBy(0, d*innerHeight*0.6); return true;
+   }
    mark(list[best]); return true;
  };
+ // Vao trang ket qua tim kiem (go xong / tim bang giong noi): o chon nam san o video dau tien
+ var lastRes='';
+ setInterval(function(){
+   try{
+     if(location.pathname.indexOf('/results')===0 && location.href!==lastRes){
+       var l=items(); if(!l.length) return;
+       lastRes=location.href;
+       var a=document.activeElement; if(a && a.tagName==='INPUT') a.blur();
+       mark(firstItem(l));
+     }
+   }catch(e){}
+ },400);
  window.__wbOk=function(){
+   if(typing()) return false;
+   if(onSearch && sEl){                 // OK tren nut tim kiem: mo trang tim kiem va dat con tro chu vao o nhap
+     var t=sEl;
+     if(t.tagName==='INPUT'){ t.focus(); try{t.select();}catch(e){} unmarkSearch(); return true; }
+     t.click();
+     setTimeout(focusSearchInput,350); setTimeout(focusSearchInput,900); setTimeout(focusSearchInput,1600);
+     return true;
+   }
    if(!cur || !cur.isConnected) return false;
    var a=cur.tagName==='A'?cur:cur.querySelector('a[href*="/watch"],a[href*="/shorts/"]');
    if(!a) return false;

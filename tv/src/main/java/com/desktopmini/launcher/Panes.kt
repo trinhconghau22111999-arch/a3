@@ -210,6 +210,17 @@ class YouTubePane(private val act: Activity, private val full: FullscreenHost) {
         return true
     }
 
+    /** Enter của bàn phím chữ: đang có ô chọn (video / nút tìm kiếm) thì làm OK; đang gõ chữ thì Enter đi thẳng vào ô gõ (tìm kiếm). */
+    fun enterKey() {
+        web.evaluateJavascript("window.__wbOk&&window.__wbOk()") { r ->
+            if (r != "true") {
+                web.requestFocus()
+                web.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                web.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+            }
+        }
+    }
+
     private fun fallbackKey(k: String) {
         val code = when (k) {
             "up" -> android.view.KeyEvent.KEYCODE_DPAD_UP
