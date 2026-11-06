@@ -185,13 +185,21 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
         val pad = FrameLayout(this).apply { background = box(Color.WHITE, 24, 2.2f) }
         // 5 phim: len / xuong / trai / phai / OK (giua) - nam trong khung chuot, can doi
         fun key(kind: Int, k: String, w: Int, h: Int, gravity: Int, l: Int = 0, t: Int = 0, r: Int = 0, b: Int = 0) {
-            val v = DPadButton(this, kind).also {
-                it.setOnClickListener { send(JSONObject().put("action", "key").put("key", k)) }
-                // Giu phim ▼: nhay xuong thanh duoi cung (Menu / TV / YouTube...) cua TV de chon bang phim
-                if (k == "down") it.setOnLongClickListener {
-                    Haptics.tick(it)
-                    send(JSONObject().put("action", "key").put("key", "bar"))
-                    true
+            val v = DPadButton(this, kind).also { btn ->
+                btn.setOnClickListener {
+                    if (k == "down" && barHoldFired) { barHoldFired = false; return@setOnClickListener }   // vua giu 2s: khong tinh la bam
+                    send(JSONObject().put("action", "key").put("key", k))
+                }
+                // Giu phim ▼ dung 2 giay: nhay xuong thanh duoi cung (Menu / TV / YouTube / Ai Kara...) cua TV
+                if (k == "down") btn.setOnTouchListener { _, e ->
+                    when (e.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            barHoldFired = false
+                            ui.removeCallbacks(barHold); ui.postDelayed(barHold, BAR_HOLD_MS)
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> ui.removeCallbacks(barHold)
+                    }
+                    false
                 }
             }
             pad.addView(v, FrameLayout.LayoutParams(dp(w), dp(h), gravity).also {
@@ -411,6 +419,13 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
     }
 
     private var lastFlushAt = 0L
+    private var barHoldFired = false
+    private val barHold = Runnable {
+        barHoldFired = true
+        pendingHaptic()
+        send(JSONObject().put("action", "key").put("key", "bar"))
+    }
+    private fun pendingHaptic() { try { Haptics.tick(window.decorView) } catch (e: Exception) { } }
 
     /** Gui ngay cu truot dau tien; cac cu tiep theo gop toi da ~60 tin/giay de khong nghen kenh truyen. */
     private fun scheduleFlush() {
@@ -519,5 +534,6 @@ class RemoteActivity : AppCompatActivity(), CameraStreamService.ConnectionStatus
         private const val MOVE_GAIN = 1.8f
         private const val SCROLL_GAIN = 1.0f
         private const val TAP_MS = 250L
+        private const val BAR_HOLD_MS = 2000L
     }
 }

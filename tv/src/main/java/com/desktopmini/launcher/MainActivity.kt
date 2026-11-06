@@ -342,14 +342,40 @@ class MainActivity : Activity(), FullscreenHost {
         return true
     }
 
+    // Bàn phím / remote vật lý nối với TV: giữ ▼ đúng 2 giây = nhảy xuống thanh dưới (YouTube, TV, Ái Kara đều dùng được)
+    private var downHoldPending = false
+    private var downHoldFired = false
+    private val downHold = Runnable { downHoldPending = false; downHoldFired = true; handleRemoteKey("bar") }
+
+    private fun keyName(keyCode: Int): String? = when (keyCode) {
+        KeyEvent.KEYCODE_DPAD_UP -> "up"; KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+        KeyEvent.KEYCODE_DPAD_LEFT -> "left"; KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> "ok"
+        else -> null
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        val k = when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> "up"; KeyEvent.KEYCODE_DPAD_DOWN -> "down"
-            KeyEvent.KEYCODE_DPAD_LEFT -> "left"; KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
-            KeyEvent.KEYCODE_DPAD_CENTER -> "ok"; else -> null
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && barFocus < 0) {
+            // Đang ở trang/menu: ▼ nhấn nhanh = đi xuống như thường (xử lý lúc nhả phím); giữ 2 giây = xuống thanh dưới
+            if (event?.repeatCount == 0) { downHoldFired = false; downHoldPending = true; ui.removeCallbacks(downHold); ui.postDelayed(downHold, 2000) }
+            return true
         }
+        val k = keyName(keyCode)
         if (k != null && (barFocus >= 0 || menuLayer.visibility == View.VISIBLE) && handleRemoteKey(k)) return true
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && (downHoldPending || downHoldFired)) {
+            val fired = downHoldFired
+            downHoldFired = false
+            if (downHoldPending) {
+                ui.removeCallbacks(downHold); downHoldPending = false
+                if (!fired && !handleRemoteKey("down")) super.onKeyDown(keyCode, KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            }
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     // ---------------- Chế độ TV / YouTube ----------------
